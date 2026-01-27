@@ -13,7 +13,7 @@ projekte = {
     "Allgemein": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
     "M20": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
     "M20 Automation": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
-    "M35 M40 M50": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"]
+    "M35 M40 M50": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
     "Pause": ["Mittag", "Kaffee", "Kurzpause"]
 }
 
@@ -97,6 +97,7 @@ if os.path.isfile(LOG_FILE):
         mime="text/csv",
 
     )
+
 
 
 
