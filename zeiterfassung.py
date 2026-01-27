@@ -86,7 +86,7 @@ if os.path.isfile(LOG_FILE):
     heutige_daten = df_display[df_display['Start'].str.contains(heute)]
     
     st.subheader(f"Dein Log von heute")
-    st.table(heutige_daten) # 'table' sieht oft sauberer aus als 'dataframe'
+    st.table(heutige_daten[::-1].head(10)) # 'table' sieht oft sauberer aus als 'dataframe'
     
     # Download Button für die CSV
     csv = df_display.to_csv(index=False).encode('utf-8')
@@ -97,6 +97,7 @@ if os.path.isfile(LOG_FILE):
         mime="text/csv",
 
     )
+
 
 
 
