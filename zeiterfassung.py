@@ -10,8 +10,10 @@ st.title("Meine Zeiterfassung ⏱️")
 
 # Deine Projekte
 projekte = {
-    "Projekt": ["Allgemein", "M20", "M20 Automation", "M35/M40/M50", "M6x", "M70"],
-    "Baugruppe": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
+    "Allgemein": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
+    "M20": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
+    "M20 Automation": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
+    "M35/M40/M50: ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"]
     "Pause": ["Mittag", "Kaffee", "Kurzpause"]
 }
 
@@ -20,7 +22,7 @@ col1, col2 = st.columns(2)
 with col1:
     projekt_wahl = st.selectbox("Projekt wählen", list(projekte.keys()))
 with col2:
-    unterprojekt_wahl = st.selectbox("Unterprojekt wählen", projekte[projekt_wahl])
+    unterprojekt_wahl = st.selectbox("Baugruppe wählen", projekte[projekt_wahl])
 
 # Button: Start / Wechseln
 if st.button("🚀 Projekt starten / Wechseln", use_container_width=True):
@@ -95,3 +97,4 @@ if os.path.isfile(LOG_FILE):
         mime="text/csv",
 
     )
+
