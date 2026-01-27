@@ -10,8 +10,8 @@ st.title("Meine Zeiterfassung ⏱️")
 
 # Deine Projekte
 projekte = {
-    "Projekt A": ["Konzept", "Umsetzung", "Review"],
-    "Projekt B": ["Meeting", "Support", "Telefonat"],
+    "Projekt": ["Allgemein", "M20", "M20 Automation", "M35/M40/M50", "M6x", "M70"],
+    "Baugruppe": ["Maschine Gesamt", "Bett & Anbauteile", "Hydraulik"],
     "Pause": ["Mittag", "Kaffee", "Kurzpause"]
 }
 
@@ -93,4 +93,5 @@ if os.path.isfile(LOG_FILE):
         data=csv,
         file_name=f"zeiterfassung_{heute}.csv",
         mime="text/csv",
+
     )
