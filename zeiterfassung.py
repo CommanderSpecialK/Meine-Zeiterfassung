@@ -110,19 +110,64 @@ if check_password():
                 }
                 df_final = pd.concat([df_alt, pd.DataFrame([feierabend])], ignore_index=True)
                 df_final.to_csv(LOG_FILE, index=False)
-                st.warning("Feierabend geloggt! Bis morgen.")
+                st.session_state["feierabend_just_logged"] = True
                 st.rerun()
             else:
                 st.info("Tag ist bereits beendet oder kein Eintrag vorhanden.")
     
     st.divider()
     
-    # Anzeige & Export
+    # Daten einlesen und filtern für Auswertungen
     if os.path.isfile(LOG_FILE):
         df_display = pd.read_csv(LOG_FILE)
         heute = datetime.now().strftime("%Y-%m-%d")
-        heutige_daten = df_display[df_display['Start'].str.contains(heute, na=False)]
+        heutige_daten = df_display[df_display['Start'].str.contains(heute, na=False)].copy()
         
+        # --- ZUSAMMENFASSUNG NACH FEIERABEND ---
+        ist_feierabend = len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND"
+        
+        if ist_feierabend:
+            st.header("📊 Tageszusammenfassung (Feierabend)")
+            
+            # Filtere Feierabend-Zeilen für die Berechnung heraus
+            df_projekte = heutige_daten[heutige_daten["Projekt"] != "🏁 FEIERABEND"].copy()
+            
+            if not df_projekte.empty:
+                # Berechne Stunden statt Minuten für bessere Lesbarkeit
+                df_projekte["Dauer_Std"] = round(df_projekte["Dauer_Min"] / 60, 2)
+                
+                # Gruppierung nach Projekt und Baugruppe (Unterprojekt)
+                summary = df_projekte.groupby(["Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
+                summary.columns = ["Projekt", "Baugruppe", "Geleistete Stunden (h)"]
+                
+                # Gesamtsumme berechnen
+                gesamte_stunden = round(df_projekte["Dauer_Min"].sum() / 60, 2)
+                
+                # Kennzahlen anzeigen
+                st.metric(label="Gesamte Arbeitszeit heute", value=f"{gesamte_stunden} Std")
+                st.subheader("Aufteilung nach Baugruppen:")
+                st.dataframe(summary, use_container_width=True, hide_index=True)
+            else:
+                st.info("Keine Projektzeiten für heute aufgezeichnet.")
+            st.divider()
+
+        # --- LIVE STATISTIK (WÄHREND DES TAGES) ---
+        else:
+            st.subheader("⏱️ Live-Statistik heute")
+            df_projekte_live = heutige_daten[heutige_daten["Projekt"] != "🏁 FEIERABEND"].copy()
+            if not df_projekte_live.empty:
+                gesamte_min_live = df_projekte_live["Dauer_Min"].sum()
+                # Berechne Zeit seit dem letzten Wechsel für das aktuelle Projekt
+                letzter_start = datetime.strptime(df_projekte_live.iloc[-1]["Start"], "%Y-%m-%d %H:%M:%S")
+                aktuell_vergangen_min = (datetime.now() - letzter_start).total_seconds() / 60
+                
+                gesamte_stunden_live = round((gesamte_min_live + aktuell_vergangen_min) / 60, 2)
+                st.metric(label="Bisherige Arbeitszeit heute (inkl. aktuelles Projekt)", value=f"{gesamte_stunden_live} Std")
+            else:
+                st.info("Noch kein Projekt für heute gestartet.")
+            st.divider()
+        
+        # --- TABELLEN ANZEIGE & DOWNLOAD ---
         st.subheader("Dein Log von heute")
         if not heutige_daten.empty:
             st.table(heutige_daten[::-1].head(10))
