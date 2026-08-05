@@ -3,6 +3,10 @@ import pandas as pd
 from datetime import datetime
 import os
 
+
+st.set_page_config(page_title="Zeiterfassung", page_icon="⏱️")
+st.title("Meine Zeiterfassung ⏱️")
+
 # --- PASSTWORT SCHUTZ FUNKTION ---
 def check_password():
     if "password_correct" not in st.session_state:
@@ -15,8 +19,7 @@ if check_password():
 
     LOG_FILE = "zeit_log.csv"
     
-    st.set_page_config(page_title="Zeiterfassung", page_icon="⏱️")
-    st.title("Meine Zeiterfassung ⏱️")
+
     
     # Deine Projekte
     projekte = {
