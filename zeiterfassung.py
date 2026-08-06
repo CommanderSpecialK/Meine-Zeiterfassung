@@ -7,16 +7,14 @@ import os
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Zeiterfassung", page_icon="⏱️", layout="centered")
 
-# --- ZEITZONEN-FUNKTION (MEZ / Lokale Zeit absichern) ---
+# --- ZEITZONEN-FUNKTION ---
 def get_local_now():
     """Holt die aktuelle Zeit basierend auf der Zeitzone des Benutzer-Browsers."""
     try:
-        user_tz_name = st.context.timezone  # Liest z.B. 'Europe/Berlin' oder 'Europe/Vienna' aus
+        user_tz_name = st.context.timezone  
         local_tz = pytz.timezone(user_tz_name)
     except Exception:
-        local_tz = pytz.timezone("Europe/Berlin")  # Fallback auf MEZ/MESZ
-    
-    # Konvertiert die aktuelle UTC-Zeit präzise in die lokale Zeitzone
+        local_tz = pytz.timezone("Europe/Berlin")  
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
 # --- PASSWORT SCHUTZ FUNKTION ---
@@ -76,7 +74,7 @@ if check_password():
     with col2:
         unterprojekt_wahl = st.selectbox("Baugruppe wählen", projekte[projekt_wahl])
     
-    # Button: Start / Wechseln
+    # Button-Bereich (Projekt starten / Tag beenden)
     if st.button("🚀 Projekt starten / Wechseln", use_container_width=True):
         jetzt = get_local_now()
         zeit_string = jetzt.strftime("%Y-%m-%d %H:%M:%S")
@@ -104,7 +102,6 @@ if check_password():
         st.success(f"Aktiviert: {projekt_wahl} - {unterprojekt_wahl}")
         st.rerun()
     
-    # Button: Tag beenden
     if st.button("🏁 Tag beenden", use_container_width=True, type="primary"):
         if os.path.isfile(LOG_FILE):
             df_alt = pd.read_csv(LOG_FILE)
@@ -126,35 +123,69 @@ if check_password():
                 st.rerun()
             else:
                 st.info("Tag ist bereits beendet oder kein Eintrag vorhanden.")
+
+    # --- FEHLBUCHUNG / STORNO FUNKTION ---
+    if os.path.isfile(LOG_FILE):
+        df_storno = pd.read_csv(LOG_FILE)
+        if len(df_storno) > 0:
+            with st.expander("⚠️ Letzten Eintrag stornieren"):
+                letzter = df_storno.iloc[-1]
+                st.write(f"**Letzter Eintrag:** {letzter['Start']} | {letzter['Projekt']} ({letzter['Unterprojekt']})")
+                st.warning("Das Löschen kann nicht rückgängig gemacht werden!")
+                if st.button("🗑️ Diesen Eintrag unwiderruflich löschen", use_container_width=True):
+                    df_gekuerzt = df_storno.drop(df_storno.index[-1])
+                    df_gekuerzt.to_csv(LOG_FILE, index=False)
+                    st.success("Eintrag erfolgreich gelöscht!")
+                    st.rerun()
     
     st.divider()
     
-    # Daten einlesen und filtern für Auswertungen
+    # Daten einlesen für Auswertungen
     if os.path.isfile(LOG_FILE):
         df_display = pd.read_csv(LOG_FILE)
+        df_display['Start_dt'] = pd.to_datetime(df_display['Start'])
         
-        # --- DATUMSFILTER ---
-        st.subheader("📅 Auswertungszeitraum filtern")
-        heute_datum = get_local_now().date()
+        # --- MONATSFILTER GENERIEREN ---
+        st.subheader("📅 Monats-Statistik auswählen")
         
-        # Datumsbereich-Auswahl (Standardmäßig nur der heutige Tag vorausgewählt)
-        date_range = st.date_input("Zeitraum wählen", [heute_datum, heute_datum])
+        # Erzeuge eine Liste aller verfügbaren Monate aus den Daten + dem aktuellen Monat
+        df_display['Monat_Jahr'] = df_display['Start_dt'].dt.strftime('%Y-%m')
+        aktuelle_monat_str = get_local_now().strftime('%Y-%m')
         
-        # Filtern nach ausgewähltem Zeitraum (nur valide Bereiche verarbeiten)
-        if len(date_range) == 2:
-            start_date, end_date = date_range
-            # Konvertiere Spalte in Datetime für den Filter-Vergleich
-            df_display['Start_dt'] = pd.to_datetime(df_display['Start'])
-            gefilterte_daten = df_display[
-                (df_display['Start_dt'].dt.date >= start_date) & 
-                (df_display['Start_dt'].dt.date <= end_date)
-            ].copy()
-        else:
-            gefilterte_daten = df_display[df_display['Start'].str.contains(heute_datum.strftime("%Y-%m-%d"), na=False)].copy()
+        verfuegbare_monate = sorted(list(df_display['Monat_Jahr'].dropna().unique()))
+        if aktuelle_monat_str not in verfuegbare_monate:
+            verfuegbare_monate.append(aktuelle_monat_str)
+            verfuegbare_monate = sorted(verfuegbare_monate)
+        
+        # Darstellung für den Benutzer
+        monats_namen = {
+            "01": "Januar", "02": "Februar", "03": "März", "04": "April", 
+            "05": "Mai", "06": "Juni", "07": "Juli", "08": "August", 
+            "09": "September", "10": "Oktober", "11": "November", "12": "Dezember"
+        }
+        
+        auswahl_labels = []
+        default_index = len(verfuegbare_monate) - 1 
+        
+        for idx, m_j in enumerate(verfuegbare_monate):
+            j, m = m_j.split("-")
+            label = f"{monats_namen[m]} {j}"
+            auswahl_labels.append(label)
+            if m_j == aktuelle_monat_str:
+                default_index = idx
 
-        # --- RECHTLICHE STATISTIK & DIAGRAMM ---
+        monat_auswahl_label = st.selectbox("Monat wählen", auswahl_labels, index=default_index)
+        
+        # Gewählten Monat wieder in das Format "YYYY-MM" zurückrechnen
+        gewaehlter_index = auswahl_labels.index(monat_auswahl_label)
+        gewaehlter_monat_str = verfuegbare_monate[gewaehlter_index]
+        
+        # Daten filtern nach dem gewählten Monat
+        gefilterte_daten = df_display[df_display['Monat_Jahr'] == gewaehlter_monat_str].copy()
+
+        # --- STATISTIK & GRAPH FÜR DEN GEWÄHLTEN MONAT ---
         if not gefilterte_daten.empty:
-            df_projekte = gefilterte_daten[gefilterte_daten["Project"] != "🏁 FEIERABEND" if "Project" in gefilterte_daten else gefilterte_daten["Projekt"] != "🏁 FEIERABEND"].copy()
+            df_projekte = gefilterte_daten[gefilterte_daten["Projekt"] != "🏁 FEIERABEND"].copy()
             
             if not df_projekte.empty:
                 df_projekte["Dauer_Std"] = round(df_projekte["Dauer_Min"] / 60, 2)
@@ -163,15 +194,11 @@ if check_password():
                 summary = df_projekte.groupby(["Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
                 summary.columns = ["Projekt", "Baugruppe", "Stunden (h)"]
                 
-                # Gesamtstunden berechnen
-                gesamte_stunden = round(summary["Stunden (h)"].sum(), 2)
+                gesamt_stunden = round(summary["Stunden (h)"].sum(), 2)
+                st.metric(label=f"Geleistete Arbeitszeit im {monat_auswahl_label}", value=f"{gesamt_stunden} Std")
                 
-                # Layout für Kennzahl und Diagramm
-                st.metric(label="Geleistete Arbeitszeit im Zeitraum", value=f"{gesamte_stunden} Std")
-                
-                # Visualisierung: Balkendiagramm nach Baugruppen gerichtet
-                st.subheader("📊 Stundenverteilung nach Baugruppe")
-                # Kombiniere Projekt + Baugruppe für eine eindeutige Achsen-Beschriftung im Chart
+                # Visualisierung: Balkendiagramm
+                st.subheader(f"📊 Stundenverteilung im {monat_auswahl_label}")
                 summary["Projekt & Baugruppe"] = summary["Projekt"] + " - " + summary["Baugruppe"]
                 
                 st.bar_chart(
@@ -184,20 +211,20 @@ if check_password():
                 st.subheader("📋 Zusammenfassung in Zahlen:")
                 st.dataframe(summary[["Projekt", "Baugruppe", "Stunden (h)"]], use_container_width=True, hide_index=True)
             else:
-                st.info("Keine Projektzeiten im gewählten Zeitraum aufgezeichnet.")
+                st.info(f"Keine Projektzeiten im {monat_auswahl_label} aufgezeichnet.")
         else:
-            st.info("Keine Einträge für diesen Zeitraum gefunden.")
+            st.info(f"Keine Einträge für den Monat {monat_auswahl_label} gefunden.")
             
         st.divider()
         
-        # --- LIVE STATUS ODER FEIERABEND ANZEIGE (NUR FÜR HEUTE) ---
-        heute_str = heute_datum.strftime("%Y-%m-%d")
+        # --- LIVE STATUS HEUTE ---
+        heute_str = get_local_now().strftime("%Y-%m-%d")
         heutige_daten = df_display[df_display['Start'].str.contains(heute_str, na=False)].copy()
         
         if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
-            st.success("🎉 Der heutige Arbeitstag ist offiziell beendet! Feierabend ist eingetragen.")
+            st.success("🎉 Der heutige Arbeitstag ist offiziell beendet!")
         else:
-            st.info("⏱️ Der Arbeitstag läuft aktuell noch. Die Statistik oben zeigt den aktuellen Stand ohne das laufende Rest-Intervall.")
+            st.info("⏱️ Der Arbeitstag läuft aktuell noch.")
 
         st.divider()
         
@@ -207,6 +234,7 @@ if check_password():
             st.table(heutige_daten[::-1].head(10))
         else:
             st.info("Heute noch keine Einträge vorhanden.")
+        
         
         # Download Button für das gesamte File
         csv = df_display.drop(columns=['Start_dt'], errors='ignore').to_csv(index=False).encode('utf-8')
