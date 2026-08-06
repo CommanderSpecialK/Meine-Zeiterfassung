@@ -1,7 +1,7 @@
 import streamlit as st
 
 def check_password_and_user():
-    """Prüft das Passwort und unterscheidet zwischen Mitarbeiter und Admin."""
+    """Prüft das Passwort und bietet eine Dropdown-Auswahl für Mitarbeiter (Enter-Taste aktiviert)."""
     if "password_correct" not in st.session_state:
         st.title("🔒 Login & Anmeldung")
         
@@ -9,22 +9,52 @@ def check_password_and_user():
         mitarbeiter_liste = [
             "-- Bitte Namen wählen --",
             "Kogler (Admin)",  # <--- Trage hier deinen exakten Namen ein!
-            "Ganglberger",
-            "Maringer"
+            "Aigner G.",
+            "Diesenreiter S.",
+            "Dumfart H.P.",
+            "Dutzler R.",
+            "Emrich T.",
+            "Freudenthaler M.",
+            "Ganglberger H.",
+            "Gruber F.",
+            "Haghofer A.",
+            "Halmdienst M.",
+            "Hinterdorfer P.",
+            "Höller P.",
+            "Horner T.",
+            "Kaltenberger A.",
+            "Maringer H.",
+            "Mühlberger A.",
+            "Neumayer L.",
+            "Oberaigner J.",
+            "Öller M.",
+            "Paul E.",
+            "Peischl D.",
+            "Pühringer W.",
+            "Santner P.",
+            "Smailagic A.",
+            "Steinmayr G.",
+            "Stöttner D.",
+            "Strasser D.",
+            "Wagner M."
         ]
         
-        user_wahl = st.selectbox("Wer bist du?", mitarbeiter_liste)
-        st.text_input("Bitte gib dein Passwort ein:", type="password", key="password_entry")
+        # Ein Streamlit-Formular bündelt die Eingaben und reagiert auf die Enter-Taste
+        with st.form("login_form", clear_on_submit=False):
+            user_wahl = st.selectbox("Name auswählen", mitarbeiter_liste)
+            st.text_input("Bitte gib dein Passwort ein:", type="password", key="password_entry")
+            
+            # Ein Formular benötigt zwingend einen st.form_submit_button
+            submit_button = st.form_submit_button("Einloggen", use_container_width=True)
         
-        if st.button("Einloggen", use_container_width=True):
+        # Die Logik wird ausgeführt, wenn der Button geklickt ODER Enter gedrückt wird
+        if submit_button:
             if user_wahl == "-- Bitte Namen wählen --":
                 st.error("Bitte wähle zuerst deinen Namen aus der Liste aus!")
             else:
-                # Prüfen, ob der ausgewählte Name der Admin ist
                 is_admin_user = (user_wahl == "Kogler (Admin)")
                 
                 if is_admin_user:
-                    # Admin benötigt das ADMIN_PASSWORD
                     if st.session_state["password_entry"] == st.secrets["ADMIN_PASSWORD"]:
                         st.session_state["password_correct"] = True
                         st.session_state["current_user"] = user_wahl
@@ -33,7 +63,6 @@ def check_password_and_user():
                     else:
                         st.error("Falsches Admin-Passwort!")
                 else:
-                    # Normale Mitarbeiter benötigen das APP_PASSWORD
                     if st.session_state["password_entry"] == st.secrets["APP_PASSWORD"]:
                         st.session_state["password_correct"] = True
                         st.session_state["current_user"] = user_wahl
@@ -42,5 +71,7 @@ def check_password_and_user():
                     else:
                         st.error("Falsches Mitarbeiter-Passwort!")
         return False
+    return st.session_state["password_correct"]
+
     return st.session_state["password_correct"]
 
