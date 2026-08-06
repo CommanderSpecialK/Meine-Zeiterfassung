@@ -5,7 +5,8 @@ import pytz
 import os
 import gspread
 from google.oauth2.service_account import Credentials
-import json  # Wird für die sichere Konvertierung benötigt
+import json
+import base64  # Zwingend erforderlich zum Entschlüsseln
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Team Zeiterfassung", page_icon="⏱️", layout="centered")
@@ -19,28 +20,27 @@ def get_local_now():
         local_tz = pytz.timezone("Europe/Berlin")  
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
-# --- GOOGLE SHEETS VERBINDUNG ---
+# --- GOOGLE SHEETS VERBINDUNG (BASE64 GEPRÜFT) ---
 def get_gspread_client():
-    """Verbindet sich über JSON-Parsing fehlerfrei mit Google Sheets."""
+    """Entschlüsselt das Google JSON aus Base64 und verbindet sich fehlerfrei."""
     scopes = [
         "https://googleapis.com",
         "https://googleapis.com"
     ]
     
-    # 1. Konvertiert die Streamlit-Secrets in ein Standard-Python-Dictionary
-    raw_creds = dict(st.secrets["gconnections"])
-    
-    # 2. Wandelt es in einen JSON-String um und parst es neu. 
-    # Das zwingt Python dazu, alle '\\n' in echte Zeilenumbrüche umzuwandeln!
-    json_string = json.dumps(raw_creds)
-    creds_dict = json.loads(json_string)
-    
-    # Sicherheitsnetz: Manuelle Ersetzung falls TOML blockiert
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    try:
+        # Liest den sauberen Base64-String aus den Secrets
+        b64_str = st.secrets["gconnections"]["base64_json"]
         
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(credentials)
+        # Wandelt den String zurück in das originale Google-JSON
+        json_bytes = base64.b64decode(b64_str)
+        creds_dict = json.loads(json_bytes.decode("utf-8"))
+        
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(credentials)
+    except Exception as e:
+        st.error(f"Kritischer Fehler bei der Google-Verbindung: {e}")
+        raise e
 
 def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
@@ -71,6 +71,7 @@ def save_data(df):
     alles_inkl_header = [header] + daten_zeilen
     
     worksheet.update(range_name="A1", values=alles_inkl_header)
+
 
 
 # --- ERWEITERTER LOGIN-SCHUTZ ---
