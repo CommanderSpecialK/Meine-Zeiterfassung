@@ -19,21 +19,21 @@ def get_local_now():
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
 # --- GOOGLE SHEETS VERBINDUNG (SICHER & TOML-STRUKTURIERT) ---
+# --- GOOGLE SHEETS VERBINDUNG (ROHER TEXTBLOCK-IMPORT) ---
 def get_gspread_client():
-    """Verbindet sich über die strukturierten Streamlit Secrets mit Google Sheets."""
     scopes = [
         "https://googleapis.com",
         "https://googleapis.com"
     ]
     
     try:
-        # Erstellt das Dictionary direkt aus den einzelnen TOML-Einträgen
+        # Die Daten werden exakt und ohne Modifikationen geladen
         creds_dict = {
           "type": st.secrets["gconnections"]["type"],
           "project_id": st.secrets["gconnections"]["project_id"],
           "private_key_id": st.secrets["gconnections"]["private_key_id"],
-          # Repariert die Zeilenumbrüche im Schlüssel im Arbeitsspeicher
-          "private_key": st.secrets["gconnections"]["private_key"].replace("\\n", "\n"),
+          # KEIN .replace() mehr nötig, da der String im Literal-Format kommt
+          "private_key": st.secrets["gconnections"]["private_key"],
           "client_email": st.secrets["gconnections"]["client_email"],
           "client_id": st.secrets["gconnections"]["client_id"],
           "auth_uri": st.secrets["gconnections"]["auth_uri"],
@@ -48,6 +48,7 @@ def get_gspread_client():
     except Exception as e:
         st.error(f"Fehler bei der Google-Authentifizierung: {e}")
         raise e
+
 
 def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
