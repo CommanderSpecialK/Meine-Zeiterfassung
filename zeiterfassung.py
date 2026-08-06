@@ -114,14 +114,20 @@ if check_password_and_user():
                 st.rerun()
     
     #st.divider()
+        st.divider()
     
-    # --- INDIVIDUELLE AUSWERTUNGEN & GRAPHEN ---
+    # --- AUSWERTUNGEN & GRAPHEN (MIT ADMIN-ANSICHT) ---
     if not df_global.empty:
         df_global['Start_dt'] = pd.to_datetime(df_global['Start'], errors='coerce')
-        df_personal = df_global[df_global['Mitarbeiter'] == current_user].copy()
+        df_global['Monat_Jahr'] = df_global['Start_dt'].dt.strftime('%Y-%m')
+        aktuelle_monat_str = get_local_now().strftime('%Y-%m')
 
+
+                # --- LIVE STATUS HEUTE (UNTERHALB DER TABS) ---
+        st.divider()
         heute_str = get_local_now().strftime("%Y-%m-%d")
-        heutige_daten = df_personal[df_personal['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
+        df_personal_live = df_global[df_global['Mitarbeiter'] == current_user].copy()
+        heutige_daten = df_personal_live[df_personal_live['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
         
         if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
             st.success("🎉 Dein heutiger Arbeitstag ist offiziell beendet!")
@@ -134,41 +140,86 @@ if check_password_and_user():
             st.table(heutige_daten[::-1].head(10)[["Start_Anzeige", "Projekt", "Unterprojekt", "Dauer_Min"]].rename(columns={"Start_Anzeige": "Start"}))
         else:
             st.info("Heute noch keine Einträge vorhanden.")
+
+
         
-        st.divider()
-        st.subheader("📅 Meine Monats-Statistik")
-        df_personal['Monat_Jahr'] = df_personal['Start_dt'].dt.strftime('%Y-%m')
-        aktuelle_monat_str = get_local_now().strftime('%Y-%m')
-        
-        verfuegbare_monate = sorted(list(df_personal['Monat_Jahr'].dropna().unique()))
+        # Verfügbare Monate für den Filter ermitteln
+        verfuegbare_monate = sorted(list(df_global['Monat_Jahr'].dropna().unique()))
         if aktuelle_monat_str not in verfuegbare_monate:
             verfuegbare_monate.append(aktuelle_monat_str)
             verfuegbare_monate = sorted(verfuegbare_monate)
-        
+            
         monats_namen = {
             "01": "Januar", "02": "Februar", "03": "März", "04": "April", "05": "Mai", "06": "Juni",
             "07": "Juli", "08": "August", "09": "September", "10": "Oktober", "11": "November", "12": "Dezember"
         }
-        
         auswahl_labels = [f"{monats_namen[m_j.split('-')[1]]} {m_j.split('-')[0]}" for m_j in verfuegbare_monate]
         default_idx = verfuegbare_monate.index(aktuelle_monat_str) if aktuelle_monat_str in verfuegbare_monate else len(verfuegbare_monate)-1
-        
-        monat_auswahl_label = st.selectbox("Monat wählen", auswahl_labels, index=default_idx)
-        gewaehlter_monat_str = verfuegbare_monate[auswahl_labels.index(monat_auswahl_label)]
-        
-        gefilterte_daten = df_personal[df_personal['Monat_Jahr'] == gewaehlter_monat_str].copy()
 
-        if not gefilterte_daten.empty:
-            df_projekte = gefilterte_daten[gefilterte_daten["Projekt"] != "🏁 FEIERABEND"].copy()
-            if not df_projekte.empty:
-                df_projekte["Dauer_Min"] = pd.to_numeric(df_projekte["Dauer_Min"], errors='coerce').fillna(0.0)
-                df_projekte["Dauer_Std"] = round(df_projekte["Dauer_Min"] / 60, 2)
-                summary = df_projekte.groupby(["Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
-                summary.columns = ["Projekt", "Baugruppe", "Stunden (h)"]
+        # Falls der User Admin ist, zeigen wir zwei Reiter (Tabs) an
+        if st.session_state.get("is_admin", False):
+            tab_persoenlich, tab_admin = st.tabs(["👤 Meine Statistik", "📊 Admin-Dashboard (Alle Mitarbeiter)"])
+        else:
+            # Normale Mitarbeiter sehen nur eine Liste ohne Tabs
+            tab_persoenlich = st.container()
+            tab_admin = None
+
+        # --- REITER 1: PERSÖNLICHE STATISTIK (FÜR JEDEN) ---
+        with tab_persoenlich:
+            st.subheader("📅 Meine Monats-Statistik")
+            monat_wahl_user = st.selectbox("Monat wählen", auswahl_labels, index=default_idx, key="user_month_select")
+            gewaehlter_monat_user = verfuegbare_monate[auswahl_labels.index(monat_wahl_user)]
+            
+            df_personal = df_global[df_global['Mitarbeiter'] == current_user].copy()
+            gefilterte_daten_user = df_personal[df_personal['Monat_Jahr'] == gewaehlter_monat_user].copy()
+
+            if not gefilterte_daten_user.empty:
+                df_projekte = gefilterte_daten_user[gefilterte_daten_user["Projekt"] != "🏁 FEIERABEND"].copy()
+                if not df_projekte.empty:
+                    df_projekte["Dauer_Min"] = pd.to_numeric(df_projekte["Dauer_Min"], errors='coerce').fillna(0.0)
+                    df_projekte["Dauer_Std"] = round(df_projekte["Dauer_Min"] / 60, 2)
+                    summary = df_projekte.groupby(["Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
+                    summary.columns = ["Projekt", "Baugruppe", "Stunden (h)"]
+                    
+                    st.metric(label=f"Deine Arbeitszeit im {monat_wahl_user}", value=f"{round(summary['Stunden (h)'].sum(), 2)} Std")
+                    summary["Projekt & Baugruppe"] = summary["Projekt"] + " - " + summary["Baugruppe"]
+                    st.bar_chart(data=summary, x="Projekt & Baugruppe", y="Stunden (h)", use_container_width=True)
+                    st.dataframe(summary[["Projekt", "Baugruppe", "Stunden (h)"]], use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"Keine Projektzeiten im {monat_wahl_user} aufgezeichnet.")
+            else:
+                st.info(f"Keine Einträge für den Monat {monat_wahl_user} gefunden.")
+
+        # --- REITER 2: ADMIN DASHBOARD (NUR FÜR ADMIN SICHTBAR) ---
+        if tab_admin is not None:
+            with tab_admin:
+                st.subheader("🏢 Monats-Zusammenfassung aller Mitarbeiter")
+                monat_wahl_admin = st.selectbox("Auswertungsmonat wählen", auswahl_labels, index=default_idx, key="admin_month_select")
+                gewaehlter_monat_admin = verfuegbare_monate[auswahl_labels.index(monat_wahl_admin)]
                 
-                st.metric(label=f"Deine Arbeitszeit im {monat_auswahl_label}", value=f"{round(summary['Stunden (h)'].sum(), 2)} Std")
-                summary["Projekt & Baugruppe"] = summary["Projekt"] + " - " + summary["Baugruppe"]
-                st.bar_chart(data=summary, x="Projekt & Baugruppe", y="Stunden (h)", use_container_width=True)
-                st.dataframe(summary[["Projekt", "Baugruppe", "Stunden (h)"]], use_container_width=True, hide_index=True)
+                # Filtere alle Daten für den gewählten Monat ohne Feierabend-Zeilen
+                df_admin_monat = df_global[(df_global['Monat_Jahr'] == gewaehlter_monat_admin) & (df_global["Projekt"] != "🏁 FEIERABEND")].copy()
+                
+                if not df_admin_monat.empty:
+                    df_admin_monat["Dauer_Min"] = pd.to_numeric(df_admin_monat["Dauer_Min"], errors='coerce').fillna(0.0)
+                    df_admin_monat["Dauer_Std"] = round(df_admin_monat["Dauer_Min"] / 60, 2)
+                    
+                    # 1. Gesamtstunden pro Mitarbeiter errechnen
+                    st.markdown("### ⏳ Gesamtstunden pro Mitarbeiter")
+                    staff_summary = df_admin_monat.groupby("Mitarbeiter")["Dauer_Std"].sum().reset_index()
+                    staff_summary.columns = ["Mitarbeiter", "Gesamtstunden (h)"]
+                    st.dataframe(staff_summary, use_container_width=True, hide_index=True)
+                    
+                    # Visueller Vergleich der Mitarbeiter
+                    st.bar_chart(data=staff_summary, x="Mitarbeiter", y="Gesamtstunden (h)", use_container_width=True)
+                    
+                    # 2. Detaillierte Projekt-Aufteilung aller Mitarbeiter
+                    st.markdown("### 📋 Aufteilung nach Projekten & Baugruppen")
+                    project_summary = df_admin_monat.groupby(["Mitarbeiter", "Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
+                    project_summary.columns = ["Mitarbeiter", "Projekt", "Baugruppe", "Geleistete Stunden (h)"]
+                    st.dataframe(project_summary, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"Keine Daten für den Monat {monat_wahl_admin} von irgendwelchen Mitarbeitern vorhanden.")
+
 
 
