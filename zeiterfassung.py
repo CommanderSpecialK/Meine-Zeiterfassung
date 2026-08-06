@@ -21,26 +21,32 @@ def get_local_now():
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
 # --- GOOGLE SHEETS VERBINDUNG (BASE64 GEPRÜFT) ---
+# --- GOOGLE SHEETS VERBINDUNG (BASE64 REPARIERT) ---
 def get_gspread_client():
-    """Entschlüsselt das Google JSON aus Base64 und verbindet sich fehlerfrei."""
+    """Entschlüsselt das Google-JSON aus Base64 und bereinigt den Schlüssel."""
     scopes = [
-        "https://googleapis.com",
+        "https://www.googleapis.com/auth/spreadsheets",
         "https://googleapis.com"
     ]
     
     try:
-        # Liest den sauberen Base64-String aus den Secrets
+        # Liest den Base64-String aus den Secrets
         b64_str = st.secrets["gconnections"]["base64_json"]
         
         # Wandelt den String zurück in das originale Google-JSON
         json_bytes = base64.b64decode(b64_str)
         creds_dict = json.loads(json_bytes.decode("utf-8"))
         
+        # WICHTIGSTES SICHERHEITSNETZ: Repariert falsche Zeichen im privaten Schlüssel
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(credentials)
     except Exception as e:
         st.error(f"Kritischer Fehler bei der Google-Verbindung: {e}")
         raise e
+
 
 def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
