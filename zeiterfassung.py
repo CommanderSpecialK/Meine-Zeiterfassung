@@ -113,15 +113,13 @@ if check_password_and_user():
                 st.success("Eintrag erfolgreich gelöscht!")
                 st.rerun()
     
-    st.divider()
+    #st.divider()
     
     # --- INDIVIDUELLE AUSWERTUNGEN & GRAPHEN ---
     if not df_global.empty:
         df_global['Start_dt'] = pd.to_datetime(df_global['Start'], errors='coerce')
         df_personal = df_global[df_global['Mitarbeiter'] == current_user].copy()
 
-
-        st.divider()
         heute_str = get_local_now().strftime("%Y-%m-%d")
         heutige_daten = df_personal[df_personal['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
         
