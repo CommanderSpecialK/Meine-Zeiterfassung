@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
 import pytz
-import os
+from streamlit_gsheets import GSheetsConnection
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Zeiterfassung", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Team Zeiterfassung", page_icon="⏱️", layout="centered")
 
 # --- ZEITZONEN-FUNKTION ---
 def get_local_now():
@@ -17,23 +17,53 @@ def get_local_now():
         local_tz = pytz.timezone("Europe/Berlin")  
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
-# --- PASSWORT SCHUTZ FUNKTION ---
-def check_password():
+# --- GOOGLE SHEETS VERBINDUNG ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def load_data():
+    """Lädt die aktuellen Daten aus dem Google Sheet."""
+    try:
+        # Liest das Tabellenblatt "Zeiterfassung" ein
+        df = conn.read(worksheet="Zeiterfassung", ttl="0s")
+        # Falls das Sheet komplett leer ist, leeren Dataframe mit Spalten erzeugen
+        if df.empty or df.columns.size < 5:
+            return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
+        return df
+    except Exception:
+        return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
+
+# --- ERWEITERTER LOGIN-SCHUTZ MIT MITARBEITER-AUSWAHL ---
+def check_password_and_user():
     if "password_correct" not in st.session_state:
-        st.title("🔒 Login erforderlich")
+        st.title("🔒 Login & Anmeldung")
+        
+        # 1. Mitarbeiter Name/Kürzel eingeben
+        st.text_input("Dein Name oder Kürzel (z.B. M. Mustermann):", key="user_name")
+        
+        # 2. Passwort abfragen
         st.text_input(
-            "Bitte gib das Passwort ein:", 
+            "Bitte gib das App-Passwort ein:", 
             type="password", 
-            on_change=lambda: st.session_state.update({"password_correct": st.session_state["password"] == st.secrets["APP_PASSWORD"]}), 
-            key="password"
+            key="password_entry"
         )
+        
+        if st.button("Einloggen", use_container_width=True):
+            if not st.session_state["user_name"].strip():
+                st.error("Bitte gib zuerst deinen Namen ein!")
+            elif st.session_state["password_entry"] == st.secrets["APP_PASSWORD"]:
+                st.session_state["password_correct"] = True
+                st.session_state["current_user"] = st.session_state["user_name"].strip()
+                st.rerun()
+            else:
+                st.error("Falsches Passwort!")
         return False
     return st.session_state["password_correct"]
 
-if check_password():
-
-    LOG_FILE = "zeit_log.csv"
+if check_password_and_user():
+    
+    current_user = st.session_state["current_user"]
     st.title("Meine Zeiterfassung ⏱️")
+    st.caption(f"Eingeloggt als: **{current_user}**")
     
     # Baugruppen-Liste (wiederverwendbar)
     baugruppen = [
@@ -74,90 +104,94 @@ if check_password():
     with col2:
         unterprojekt_wahl = st.selectbox("Baugruppe wählen", projekte[projekt_wahl])
     
-    # Button-Bereich (Projekt starten / Tag beenden)
+    # Daten initial laden
+    df_global = load_data()
+    
+    # Button: Projekt starten / Wechseln
     if st.button("🚀 Projekt starten / Wechseln", use_container_width=True):
         jetzt = get_local_now()
         zeit_string = jetzt.strftime("%Y-%m-%d %H:%M:%S")
         
         neuer_eintrag = {
+            "Mitarbeiter": current_user,
             "Start": zeit_string,
             "Projekt": projekt_wahl,
             "Unterprojekt": unterprojekt_wahl,
             "Dauer_Min": 0.0
         }
         
-        if not os.path.isfile(LOG_FILE):
-            df = pd.DataFrame([neuer_eintrag])
-            df.to_csv(LOG_FILE, index=False)
-        else:
-            df_alt = pd.read_csv(LOG_FILE)
-            if len(df_alt) > 0:
-                letzter_start = datetime.strptime(df_alt.iloc[-1]["Start"], "%Y-%m-%d %H:%M:%S")
-                if df_alt.iloc[-1]["Projekt"] != "🏁 FEIERABEND":
-                    dauer = (jetzt - letzter_start).total_seconds() / 60
-                    df_alt.at[df_alt.index[-1], "Dauer_Min"] = round(dauer, 2)
-            
-            df_neu = pd.concat([df_alt, pd.DataFrame([neuer_eintrag])], ignore_index=True)
-            df_neu.to_csv(LOG_FILE, index=False)
+        # Letzten Eintrag SPEZIFISCH FÜR DIESEN MITARBEITER finden und Dauer updaten
+        df_user = df_global[df_global["Mitarbeiter"] == current_user]
+        if len(df_user) > 0:
+            letzter_user_index = df_user.index[-1]
+            if df_global.at[letzter_user_index, "Projekt"] != "🏁 FEIERABEND":
+                letzter_start = datetime.strptime(df_global.at[letzter_user_index, "Start"], "%Y-%m-%d %H:%M:%S")
+                dauer = (jetzt - letzter_start).total_seconds() / 60
+                df_global.at[letzter_user_index, "Dauer_Min"] = round(dauer, 2)
+        
+        # Neuen Eintrag anhängen und hochladen
+        df_neu = pd.concat([df_global, pd.DataFrame([neuer_eintrag])], ignore_index=True)
+        conn.update(worksheet="Zeiterfassung", data=df_neu)
         st.success(f"Aktiviert: {projekt_wahl} - {unterprojekt_wahl}")
         st.rerun()
     
     if st.button("🏁 Tag beenden", use_container_width=True, type="primary"):
-        if os.path.isfile(LOG_FILE):
-            df_alt = pd.read_csv(LOG_FILE)
-            if len(df_alt) > 0 and df_alt.iloc[-1]["Projekt"] != "🏁 FEIERABEND":
-                jetzt = get_local_now()
-                letzter_start = datetime.strptime(df_alt.iloc[-1]["Start"], "%Y-%m-%d %H:%M:%S")
-                
-                dauer = (jetzt - letzter_start).total_seconds() / 60
-                df_alt.at[df_alt.index[-1], "Dauer_Min"] = round(dauer, 2)
-                
-                feierabend = {
-                    "Start": jetzt.strftime("%Y-%m-%d %H:%M:%S"),
-                    "Projekt": "🏁 FEIERABEND",
-                    "Unterprojekt": "-",
-                    "Dauer_Min": 0.0
-                }
-                df_final = pd.concat([df_alt, pd.DataFrame([feierabend])], ignore_index=True)
-                df_final.to_csv(LOG_FILE, index=False)
-                st.rerun()
-            else:
-                st.info("Tag ist bereits beendet oder kein Eintrag vorhanden.")
+        df_user = df_global[df_global["Mitarbeiter"] == current_user]
+        if len(df_user) > 0 and df_user.iloc[-1]["Projekt"] != "🏁 FEIERABEND":
+            jetzt = get_local_now()
+            letzter_user_index = df_user.index[-1]
+            
+            letzter_start = datetime.strptime(df_global.at[letzter_user_index, "Start"], "%Y-%m-%d %H:%M:%S")
+            dauer = (jetzt - letzter_start).total_seconds() / 60
+            df_global.at[letzter_user_index, "Dauer_Min"] = round(dauer, 2)
+            
+            feierabend = {
+                "Mitarbeiter": current_user,
+                "Start": jetzt.strftime("%Y-%m-%d %H:%M:%S"),
+                "Projekt": "🏁 FEIERABEND",
+                "Unterprojekt": "-",
+                "Dauer_Min": 0.0
+            }
+            df_final = pd.concat([df_global, pd.DataFrame([feierabend])], ignore_index=True)
+            conn.update(worksheet="Zeiterfassung", data=df_final)
+            st.rerun()
+        else:
+            st.info("Dein Tag ist bereits beendet oder kein Eintrag vorhanden.")
 
-    # --- FEHLBUCHUNG / STORNO FUNKTION ---
-    if os.path.isfile(LOG_FILE):
-        df_storno = pd.read_csv(LOG_FILE)
-        if len(df_storno) > 0:
-            with st.expander("⚠️ Letzten Eintrag stornieren"):
-                letzter = df_storno.iloc[-1]
-                st.write(f"**Letzter Eintrag:** {letzter['Start']} | {letzter['Projekt']} ({letzter['Unterprojekt']})")
-                st.warning("Das Löschen kann nicht rückgängig gemacht werden!")
-                if st.button("🗑️ Diesen Eintrag unwiderruflich löschen", use_container_width=True):
-                    df_gekuerzt = df_storno.drop(df_storno.index[-1])
-                    df_gekuerzt.to_csv(LOG_FILE, index=False)
-                    st.success("Eintrag erfolgreich gelöscht!")
-                    st.rerun()
+    # --- STORNO FUNKTION (NUR FÜR DEN EIGENEN LETZTEN EINTRAG) ---
+    df_user_storno = df_global[df_global["Mitarbeiter"] == current_user]
+    if len(df_user_storno) > 0:
+        with st.expander("⚠️ Meinen letzten Eintrag stornieren"):
+            letzter = df_user_storno.iloc[-1]
+            letzter_global_idx = df_user_storno.index[-1]
+            st.write(f"**Dein letzter Eintrag:** {letzter['Start']} | {letzter['Projekt']} ({letzter['Unterprojekt']})")
+            st.warning("Das Löschen entfernt deine letzte Buchung aus der Datenbank!")
+            if st.button("🗑️ Diesen Eintrag unwiderruflich löschen", use_container_width=True):
+                df_gekuerzt = df_global.drop(letzter_global_idx)
+                conn.update(worksheet="Zeiterfassung", data=df_gekuerzt)
+                st.success("Eintrag erfolgreich gelöscht!")
+                st.rerun()
     
     st.divider()
     
-    # Daten einlesen für Auswertungen
-    if os.path.isfile(LOG_FILE):
-        df_display = pd.read_csv(LOG_FILE)
-        df_display['Start_dt'] = pd.to_datetime(df_display['Start'])
+    # --- DATEN FILTERN FÜR DIE INDIVIDUELLE AUSWERTUNG ---
+    if not df_global.empty:
+        df_global['Start_dt'] = pd.to_datetime(df_global['Start'])
+        
+        # Filtere primär nach den Einträgen des angemeldeten Benutzers
+        df_personal = df_global[df_global['Mitarbeiter'] == current_user].copy()
         
         # --- MONATSFILTER GENERIEREN ---
-        st.subheader("📅 Monats-Statistik auswählen")
+        st.subheader("📅 Meine Monats-Statistik")
         
-        # Erzeuge eine Liste aller verfügbaren Monate aus den Daten + dem aktuellen Monat
-        df_display['Monat_Jahr'] = df_display['Start_dt'].dt.strftime('%Y-%m')
+        df_personal['Monat_Jahr'] = df_personal['Start_dt'].dt.strftime('%Y-%m')
         aktuelle_monat_str = get_local_now().strftime('%Y-%m')
         
-        verfuegbare_monate = sorted(list(df_display['Monat_Jahr'].dropna().unique()))
+        verfuegbare_monate = sorted(list(df_personal['Monat_Jahr'].dropna().unique()))
         if aktuelle_monat_str not in verfuegbare_monate:
             verfuegbare_monate.append(aktuelle_monat_str)
             verfuegbare_monate = sorted(verfuegbare_monate)
         
-        # Darstellung für den Benutzer
         monats_namen = {
             "01": "Januar", "02": "Februar", "03": "März", "04": "April", 
             "05": "Mai", "06": "Juni", "07": "Juli", "08": "August", 
@@ -176,39 +210,27 @@ if check_password():
 
         monat_auswahl_label = st.selectbox("Monat wählen", auswahl_labels, index=default_index)
         
-        # Gewählten Monat wieder in das Format "YYYY-MM" zurückrechnen
         gewaehlter_index = auswahl_labels.index(monat_auswahl_label)
         gewaehlter_monat_str = verfuegbare_monate[gewaehlter_index]
         
-        # Daten filtern nach dem gewählten Monat
-        gefilterte_daten = df_display[df_display['Monat_Jahr'] == gewaehlter_monat_str].copy()
+        gefilterte_daten = df_personal[df_personal['Monat_Jahr'] == gewaehlter_monat_str].copy()
 
-        # --- STATISTIK & GRAPH FÜR DEN GEWÄHLTEN MONAT ---
+        # --- STATISTIK & GRAPH ---
         if not gefilterte_daten.empty:
             df_projekte = gefilterte_daten[gefilterte_daten["Projekt"] != "🏁 FEIERABEND"].copy()
             
             if not df_projekte.empty:
                 df_projekte["Dauer_Std"] = round(df_projekte["Dauer_Min"] / 60, 2)
-                
-                # Aggregieren für Statistik und Diagramm
                 summary = df_projekte.groupby(["Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
                 summary.columns = ["Projekt", "Baugruppe", "Stunden (h)"]
                 
                 gesamt_stunden = round(summary["Stunden (h)"].sum(), 2)
-                st.metric(label=f"Geleistete Arbeitszeit im {monat_auswahl_label}", value=f"{gesamt_stunden} Std")
+                st.metric(label=f"Deine Arbeitszeit im {monat_auswahl_label}", value=f"{gesamt_stunden} Std")
                 
-                # Visualisierung: Balkendiagramm
                 st.subheader(f"📊 Stundenverteilung im {monat_auswahl_label}")
                 summary["Projekt & Baugruppe"] = summary["Projekt"] + " - " + summary["Baugruppe"]
                 
-                st.bar_chart(
-                    data=summary,
-                    x="Projekt & Baugruppe",
-                    y="Stunden (h)",
-                    use_container_width=True
-                )
-                
-                st.subheader("📋 Zusammenfassung in Zahlen:")
+                st.bar_chart(data=summary, x="Projekt & Baugruppe", y="Stunden (h)", use_container_width=True)
                 st.dataframe(summary[["Projekt", "Baugruppe", "Stunden (h)"]], use_container_width=True, hide_index=True)
             else:
                 st.info(f"Keine Projektzeiten im {monat_auswahl_label} aufgezeichnet.")
@@ -219,21 +241,22 @@ if check_password():
         
         # --- LIVE STATUS HEUTE ---
         heute_str = get_local_now().strftime("%Y-%m-%d")
-        heutige_daten = df_display[df_display['Start'].str.contains(heute_str, na=False)].copy()
+        heutige_daten = df_personal[df_personal['Start'].str.contains(heute_str, na=False)].copy()
         
         if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
-            st.success("🎉 Der heutige Arbeitstag ist offiziell beendet!")
+            st.success("🎉 Dein heutiger Arbeitstag ist offiziell beendet!")
         else:
-            st.info("⏱️ Der Arbeitstag läuft aktuell noch.")
+            st.info("⏱️ Dein Arbeitstag läuft aktuell noch.")
 
         st.divider()
         
-        # --- TABELLEN ANZEIGE (HEUTE) & DOWNLOAD ---
+        # --- TABELLEN ANZEIGE (EIGENE EINTRÄGE HEUTE) ---
         st.subheader("Dein Log von heute")
         if not heutige_daten.empty:
-            st.table(heutige_daten[::-1].head(10))
+            st.table(heutige_daten[::-1].head(10)[["Start", "Projekt", "Unterprojekt", "Dauer_Min"]])
         else:
             st.info("Heute noch keine Einträge vorhanden.")
+
         
         
         # Download Button für das gesamte File
