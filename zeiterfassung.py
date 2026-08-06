@@ -151,7 +151,7 @@ if check_password_and_user():
 
 
                 # --- LIVE STATUS HEUTE (SCHÖN UNTEN PLATZIERT) ---
-        st.divider()
+        #st.divider()
         heute_str = get_local_now().strftime("%Y-%m-%d")
         heutige_daten = df_personal_base[df_personal_base['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
         
