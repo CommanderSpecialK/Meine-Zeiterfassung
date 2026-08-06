@@ -1,18 +1,30 @@
 import streamlit as st
 
 def check_password_and_user():
-    """Prüft das Passwort und speichert das Mitarbeiter-Kürzel."""
+    """Prüft das Passwort und bietet eine Dropdown-Auswahl für Mitarbeiter."""
     if "password_correct" not in st.session_state:
         st.title("🔒 Login & Anmeldung")
-        st.text_input("Dein Name oder Kürzel (z.B. M. Mustermann):", key="user_name")
+        
+        # --- MITARBEITER LISTE ---
+        mitarbeiter_liste = [
+            "-- Bitte Namen wählen --",
+            "Kogler",
+            "Maringer",
+            "Ganglberger"
+        ]
+        
+        # Dropdown statt Freitextfeld
+        user_wahl = st.selectbox("Wer bist du?", mitarbeiter_liste)
+        
+        # Passwort abfragen
         st.text_input("Bitte gib das App-Passwort ein:", type="password", key="password_entry")
         
         if st.button("Einloggen", use_container_width=True):
-            if not st.session_state["user_name"].strip():
-                st.error("Bitte gib zuerst deinen Namen ein!")
+            if user_wahl == "-- Bitte Namen wählen --":
+                st.error("Bitte wähle zuerst deinen Namen aus der Liste aus!")
             elif st.session_state["password_entry"] == st.secrets["APP_PASSWORD"]:
                 st.session_state["password_correct"] = True
-                st.session_state["current_user"] = st.session_state["user_name"].strip()
+                st.session_state["current_user"] = user_wahl
                 st.rerun()
             else:
                 st.error("Falsches Passwort!")
