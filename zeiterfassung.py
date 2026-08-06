@@ -123,7 +123,15 @@ if check_password_and_user():
         df_global['Monat_Jahr'] = df_global['Start_dt'].dt.strftime('%Y-%m')
         aktuelle_monat_str = get_local_now().strftime('%Y-%m')
         
-        verfuegbare_monate = sorted(list(df_global['Monat_Jahr'].dropna().unique()))
+        # Persönliche Daten filtern (wird für Filter und Live-Status benötigt)
+        df_personal_base = df_global[df_global['Mitarbeiter'] == current_user].copy()
+        
+        # Verfügbare Monate: Admin sieht alle Monate, Mitarbeiter nur seine eigenen
+        if st.session_state.get("is_admin", False):
+            verfuegbare_monate = sorted(list(df_global['Monat_Jahr'].dropna().unique()))
+        else:
+            verfuegbare_monate = sorted(list(df_personal_base['Monat_Jahr'].dropna().unique()))
+            
         if aktuelle_monat_str not in verfuegbare_monate:
             verfuegbare_monate.append(aktuelle_monat_str)
             verfuegbare_monate = sorted(verfuegbare_monate)
@@ -132,15 +140,20 @@ if check_password_and_user():
             "01": "Januar", "02": "Februar", "03": "März", "04": "April", "05": "Mai", "06": "Juni",
             "07": "Juli", "08": "August", "09": "September", "10": "Oktober", "11": "November", "12": "Dezember"
         }
-        auswahl_labels = [f"{monats_namen[m_j.split('-')]} {m_j.split('-')}" for m_j in verfuegbare_monate]
+        
+        auswahl_labels = []
+        for m_j in verfuegbare_monate:
+            jahr, monat = m_j.split('-')
+            label = f"{monats_namen[monat]} {jahr}"
+            auswahl_labels.append(label)
+            
         default_idx = verfuegbare_monate.index(aktuelle_monat_str) if aktuelle_monat_str in verfuegbare_monate else len(verfuegbare_monate)-1
 
 
-                # --- LIVE STATUS HEUTE (UNTERHALB DER TABS) ---
+                # --- LIVE STATUS HEUTE (SCHÖN UNTEN PLATZIERT) ---
         st.divider()
         heute_str = get_local_now().strftime("%Y-%m-%d")
-        df_personal_live = df_global[df_global['Mitarbeiter'] == current_user].copy()
-        heutige_daten = df_personal_live[df_personal_live['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
+        heutige_daten = df_personal_base[df_personal_base['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
         
         if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
             st.success("🎉 Dein heutiger Arbeitstag ist offiziell beendet!")
@@ -153,7 +166,7 @@ if check_password_and_user():
             st.table(heutige_daten[::-1].head(10)[["Start_Anzeige", "Projekt", "Unterprojekt", "Dauer_Min"]].rename(columns={"Start_Anzeige": "Start"}))
         else:
             st.info("Heute noch keine Einträge vorhanden.")
-        
+
         
         # Tab-Steuerung für den Admin
         if st.session_state.get("is_admin", False):
@@ -168,11 +181,10 @@ if check_password_and_user():
             monat_wahl_user = st.selectbox("Monat wählen", auswahl_labels, index=default_idx, key="user_month_select")
             gewaehlter_monat_user = verfuegbare_monate[auswahl_labels.index(monat_wahl_user)]
             
-            df_personal = df_global[df_global['Mitarbeiter'] == current_user].copy()
-            gefilterte_daten_user = df_personal[df_personal['Monat_Jahr'] == gewaehlter_monat_user].copy()
+            gefilterte_daten_user = df_personal_base[df_personal_base['Monat_Jahr'] == gewaehlter_monat_user].copy()
 
             if not gefilterte_daten_user.empty:
-                df_projekte = gefilterte_daten_user[gefilterte_daten_user["Projekt"] != "🏁 FEIERABEND"].copy()
+                df_projekte = gefilterte_daten_user[gefilterte_daten_user["Project"] != "🏁 FEIERABEND" if "Project" in gefilterte_daten_user else gefilterte_daten_user["Projekt"] != "🏁 FEIERABEND"].copy()
                 if not df_projekte.empty:
                     df_projekte["Dauer_Min"] = pd.to_numeric(df_projekte["Dauer_Min"], errors='coerce').fillna(0.0)
                     df_projekte["Dauer_Std"] = round(df_projekte["Dauer_Min"] / 60, 2)
@@ -187,6 +199,9 @@ if check_password_and_user():
                     st.info(f"Keine Projektzeiten im {monat_wahl_user} aufgezeichnet.")
             else:
                 st.info(f"Keine Einträge für den Monat {monat_wahl_user} gefunden.")
+
+
+
 
         # --- REITER 2: ADMIN DASHBOARD (NUR FÜR ADMIN) ---
         if tab_admin is not None:
