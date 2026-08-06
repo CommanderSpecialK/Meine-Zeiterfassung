@@ -5,8 +5,6 @@ import pytz
 import os
 import gspread
 from google.oauth2.service_account import Credentials
-import json
-import base64  # Zwingend erforderlich zum Entschlüsseln
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Team Zeiterfassung", page_icon="⏱️", layout="centered")
@@ -20,32 +18,33 @@ def get_local_now():
         local_tz = pytz.timezone("Europe/Berlin")  
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
-# --- GOOGLE SHEETS VERBINDUNG (BASE64 GEPRÜFT) ---
-# --- GOOGLE SHEETS VERBINDUNG (BASE64 REPARIERT) ---
+# --- GOOGLE SHEETS VERBINDUNG (SICHER & TOML-KONFORM) ---
 def get_gspread_client():
-    """Entschlüsselt das Google-JSON aus Base64 und bereinigt den Schlüssel."""
+    """Verbindet sich über die Streamlit Secrets, ohne den Key im Code zu zeigen."""
     scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
+        "https://googleapis.com",
         "https://googleapis.com"
     ]
     
-    try:
-        # Liest den Base64-String aus den Secrets
-        b64_str = st.secrets["gconnections"]["base64_json"]
+    # Lädt die Daten sicher aus den verschlüsselten Umgebungsvariablen
+    creds_dict = {
+      "type": st.secrets["gconnections"]["type"],
+      "project_id": st.secrets["gconnections"]["project_id"],
+      "private_key_id": st.secrets["gconnections"]["private_key_id"],
+      # Das .replace stellt sicher, dass die Zeilenumbrüche im Hintergrund perfekt ankommen
+      "private_key": st.secrets["gconnections"]["private_key"].replace("\\n", "\n"),
+      "client_email": st.secrets["gconnections"]["client_email"],
+      "client_id": st.secrets["gconnections"]["client_id"],
+      "auth_uri": st.secrets["gconnections"]["auth_uri"],
+      "token_uri": st.secrets["gconnections"]["token_uri"],
+      "auth_provider_x509_cert_url": st.secrets["gconnections"]["auth_provider_x509_cert_url"],
+      "client_x509_cert_url": st.secrets["gconnections"]["client_x509_cert_url"],
+      "universe_domain": st.secrets["gconnections"]["universe_domain"]
+    }
         
-        # Wandelt den String zurück in das originale Google-JSON
-        json_bytes = base64.b64decode(b64_str)
-        creds_dict = json.loads(json_bytes.decode("utf-8"))
-        
-        # WICHTIGSTES SICHERHEITSNETZ: Repariert falsche Zeichen im privaten Schlüssel
-        if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-            
-        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return gspread.authorize(credentials)
-    except Exception as e:
-        st.error(f"Kritischer Fehler bei der Google-Verbindung: {e}")
-        raise e
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    return gspread.authorize(credentials)
+
 
 
 def load_data():
