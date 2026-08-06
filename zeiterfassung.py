@@ -5,6 +5,7 @@ import pytz
 import os
 import gspread
 from google.oauth2.service_account import Credentials
+import json  # Wird für die sichere Konvertierung benötigt
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Team Zeiterfassung", page_icon="⏱️", layout="centered")
@@ -19,26 +20,24 @@ def get_local_now():
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
 # --- GOOGLE SHEETS VERBINDUNG ---
-# --- GOOGLE SHEETS VERBINDUNG ---
 def get_gspread_client():
-    """Verbindet sich direkt über die Streamlit Secrets mit Google Sheets."""
+    """Verbindet sich über JSON-Parsing fehlerfrei mit Google Sheets."""
     scopes = [
         "https://googleapis.com",
         "https://googleapis.com"
     ]
     
-    # Konvertiert das Secrets-Objekt sauber in ein Standard-Dictionary
-    creds_dict = {}
-    for key, value in st.secrets["gconnections"].items():
-        creds_dict[key] = value
-        
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(credentials)
-
+    # 1. Konvertiert die Streamlit-Secrets in ein Standard-Python-Dictionary
+    raw_creds = dict(st.secrets["gconnections"])
     
-    # Bereinigt den private_key von potenziellen Windows/Linux-Formatierungsfehlern
+    # 2. Wandelt es in einen JSON-String um und parst es neu. 
+    # Das zwingt Python dazu, alle '\\n' in echte Zeilenumbrüche umzuwandeln!
+    json_string = json.dumps(raw_creds)
+    creds_dict = json.loads(json_string)
+    
+    # Sicherheitsnetz: Manuelle Ersetzung falls TOML blockiert
     if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n").replace("\n\n", "\n")
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
@@ -60,20 +59,19 @@ def load_data():
         return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
 
 def save_data(df):
-    """Überschreibt das Google Sheet sicher mit den neuen Daten (gspread v6 kompatibel)."""
+    """Überschreibt das Google Sheet sicher mit den neuen Daten."""
     client = get_gspread_client()
     sheet = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
     worksheet = sheet.worksheet("Zeiterfassung")
     
     worksheet.clear()
     
-    # Bereite die Daten als saubere Liste von Listen vor
     header = df.columns.values.tolist()
     daten_zeilen = df.fillna("").values.tolist()
     alles_inkl_header = [header] + daten_zeilen
     
-    # Schreibt alle Daten ab Zelle A1 neu in das Sheet
     worksheet.update(range_name="A1", values=alles_inkl_header)
+
 
 # --- ERWEITERTER LOGIN-SCHUTZ ---
 def check_password_and_user():
