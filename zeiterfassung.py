@@ -2,14 +2,15 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
 import pytz
-from streamlit_gsheets import GSheetsConnection
+import os
+import gspread
+from google.oauth2.service_account import Credentials
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Team Zeiterfassung", page_icon="⏱️", layout="centered")
 
 # --- ZEITZONEN-FUNKTION ---
 def get_local_now():
-    """Holt die aktuelle Zeit basierend auf der Zeitzone des Benutzer-Browsers."""
     try:
         user_tz_name = st.context.timezone  
         local_tz = pytz.timezone(user_tz_name)
@@ -17,20 +18,49 @@ def get_local_now():
         local_tz = pytz.timezone("Europe/Berlin")  
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
-# --- GOOGLE SHEETS VERBINDUNG ---
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- GOOGLE SHEETS VERBINDUNG (ÜBER SERVICE ACCOUNT) ---
+def get_gspread_client():
+    """Verbindet sich sicher über die Streamlit Secrets mit Google Sheets."""
+    scopes = [
+        "https://googleapis.com",
+        "https://googleapis.com"
+    ]
+    # Holt sich die JSON-Zugangsdaten direkt aus den Streamlit Cloud Secrets
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gconnections"], 
+        scopes=scopes
+    )
+    return gspread.authorize(credentials)
 
 def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
     try:
-        # Liest das Tabellenblatt "Zeiterfassung" ein
-        df = conn.read(worksheet="Zeiterfassung", ttl="0s")
-        # Falls das Sheet komplett leer ist, leeren Dataframe mit Spalten erzeugen
-        if df.empty or df.columns.size < 5:
+        client = get_gspread_client()
+        # Öffnet das Sheet anhand der URL aus deinen Secrets
+        sheet = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
+        worksheet = sheet.worksheet("Zeiterfassung")
+        
+        # Holt alle Daten und konvertiert sie in ein Pandas Dataframe
+        records = worksheet.get_all_records()
+        df = pd.DataFrame(records)
+        
+        if df.empty:
             return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
         return df
-    except Exception:
+    except Exception as e:
+        # Falls das Sheet komplett neu/leer ist, leeres Tabellengerüst liefern
         return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
+
+def save_data(df):
+    """Überschreibt das Google Sheet sicher mit den neuen Daten."""
+    client = get_gspread_client()
+    sheet = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
+    worksheet = sheet.worksheet("Zeiterfassung")
+    
+    # Löscht das alte Sheet und schreibt die neuen Daten inklusive Header rein
+    worksheet.clear()
+    worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+
 
 # --- ERWEITERTER LOGIN-SCHUTZ MIT MITARBEITER-AUSWAHL ---
 def check_password_and_user():
@@ -131,7 +161,7 @@ if check_password_and_user():
         
         # Neuen Eintrag anhängen und hochladen
         df_neu = pd.concat([df_global, pd.DataFrame([neuer_eintrag])], ignore_index=True)
-        conn.update(worksheet="Zeiterfassung", data=df_neu)
+        save_data(df_neu)
         st.success(f"Aktiviert: {projekt_wahl} - {unterprojekt_wahl}")
         st.rerun()
     
@@ -153,7 +183,7 @@ if check_password_and_user():
                 "Dauer_Min": 0.0
             }
             df_final = pd.concat([df_global, pd.DataFrame([feierabend])], ignore_index=True)
-            conn.update(worksheet="Zeiterfassung", data=df_final)
+            save_data(df_final)
             st.rerun()
         else:
             st.info("Dein Tag ist bereits beendet oder kein Eintrag vorhanden.")
@@ -168,7 +198,7 @@ if check_password_and_user():
             st.warning("Das Löschen entfernt deine letzte Buchung aus der Datenbank!")
             if st.button("🗑️ Diesen Eintrag unwiderruflich löschen", use_container_width=True):
                 df_gekuerzt = df_global.drop(letzter_global_idx)
-                conn.update(worksheet="Zeiterfassung", data=df_gekuerzt)
+                save_data(df_gekuerzt)
                 st.success("Eintrag erfolgreich gelöscht!")
                 st.rerun()
     
