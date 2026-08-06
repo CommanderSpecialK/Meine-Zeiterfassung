@@ -20,18 +20,20 @@ def get_local_now():
 
 # --- GOOGLE SHEETS VERBINDUNG ---
 def get_gspread_client():
-    """Verbindet sich über die Secrets und repariert Formatierungsfehler im private_key."""
+    """Verbindet sich über die Secrets und stellt das korrekte Schlüsselformat sicher."""
     scopes = [
         "https://googleapis.com",
         "https://googleapis.com"
     ]
     
-    # Erstelle eine Kopie der Secrets im Speicher
-    creds_dict = dict(st.secrets["gconnections"])
+    # Konvertiert das Streamlit-Secrets-Objekt sauber in ein echtes Python-Dictionary
+    creds_dict = {}
+    for key, value in st.secrets["gconnections"].items():
+        creds_dict[key] = value
     
-    # WICHTIG: Repariert verloren gegangene Zeilenumbrüche im Schlüssel automatisch
+    # Bereinigt den private_key von potenziellen Windows/Linux-Formatierungsfehlern
     if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n").replace("\n\n", "\n")
         
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
@@ -40,7 +42,6 @@ def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
     try:
         client = get_gspread_client()
-        # Korrigierter Pfad zur Spreadsheet-URL
         sheet = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
         worksheet = sheet.worksheet("Zeiterfassung")
         
@@ -54,14 +55,20 @@ def load_data():
         return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
 
 def save_data(df):
-    """Überschreibt das Google Sheet sicher mit den neuen Daten."""
+    """Überschreibt das Google Sheet sicher mit den neuen Daten (gspread v6 kompatibel)."""
     client = get_gspread_client()
     sheet = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
     worksheet = sheet.worksheet("Zeiterfassung")
     
     worksheet.clear()
-    # Header und Daten sauber als Liste in das Sheet schreiben
-    worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+    
+    # Bereite die Daten als saubere Liste von Listen vor
+    header = df.columns.values.tolist()
+    daten_zeilen = df.fillna("").values.tolist()
+    alles_inkl_header = [header] + daten_zeilen
+    
+    # Schreibt alle Daten ab Zelle A1 neu in das Sheet
+    worksheet.update(range_name="A1", values=alles_inkl_header)
 
 # --- ERWEITERTER LOGIN-SCHUTZ ---
 def check_password_and_user():
