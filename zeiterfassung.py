@@ -19,17 +19,22 @@ def get_local_now():
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
 # --- GOOGLE SHEETS VERBINDUNG ---
+# --- GOOGLE SHEETS VERBINDUNG ---
 def get_gspread_client():
-    """Verbindet sich über die Secrets und stellt das korrekte Schlüsselformat sicher."""
+    """Verbindet sich direkt über die Streamlit Secrets mit Google Sheets."""
     scopes = [
         "https://googleapis.com",
         "https://googleapis.com"
     ]
     
-    # Konvertiert das Streamlit-Secrets-Objekt sauber in ein echtes Python-Dictionary
+    # Konvertiert das Secrets-Objekt sauber in ein Standard-Dictionary
     creds_dict = {}
     for key, value in st.secrets["gconnections"].items():
         creds_dict[key] = value
+        
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    return gspread.authorize(credentials)
+
     
     # Bereinigt den private_key von potenziellen Windows/Linux-Formatierungsfehlern
     if "private_key" in creds_dict:
