@@ -8,15 +8,12 @@ def check_password_and_user():
         # --- MITARBEITER LISTE ---
         mitarbeiter_liste = [
             "-- Bitte Namen wählen --",
-            "Kogler",
+            "Kogler",  # <--- ADMIN USER!
             "Maringer",
             "Ganglberger"
         ]
         
-        # Dropdown statt Freitextfeld
         user_wahl = st.selectbox("Wer bist du?", mitarbeiter_liste)
-        
-        # Passwort abfragen
         st.text_input("Bitte gib das App-Passwort ein:", type="password", key="password_entry")
         
         if st.button("Einloggen", use_container_width=True):
@@ -25,6 +22,9 @@ def check_password_and_user():
             elif st.session_state["password_entry"] == st.secrets["APP_PASSWORD"]:
                 st.session_state["password_correct"] = True
                 st.session_state["current_user"] = user_wahl
+                
+                # Prüfen, ob der ausgewählte Name der Admin ist
+                st.session_state["is_admin"] = (user_wahl == "Kogler") # <--- Hier exakt denselben Admin-Namen eintragen!
                 st.rerun()
             else:
                 st.error("Falsches Passwort!")
