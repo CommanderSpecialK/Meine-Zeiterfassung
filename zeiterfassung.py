@@ -124,7 +124,7 @@ if check_password_and_user():
 
 
                 # --- LIVE STATUS HEUTE (UNTERHALB DER TABS) ---
-        #st.divider()
+        st.divider()
         heute_str = get_local_now().strftime("%Y-%m-%d")
         df_personal_live = df_global[df_global['Mitarbeiter'] == current_user].copy()
         heutige_daten = df_personal_live[df_personal_live['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
