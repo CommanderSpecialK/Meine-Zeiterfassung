@@ -18,37 +18,39 @@ def get_local_now():
         local_tz = pytz.timezone("Europe/Berlin")  
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
-# --- GOOGLE SHEETS VERBINDUNG (ÜBER SERVICE ACCOUNT) ---
+# --- GOOGLE SHEETS VERBINDUNG ---
 def get_gspread_client():
-    """Verbindet sich sicher über die Streamlit Secrets mit Google Sheets."""
+    """Verbindet sich über die Secrets und repariert Formatierungsfehler im private_key."""
     scopes = [
         "https://googleapis.com",
         "https://googleapis.com"
     ]
-    # Holt sich die JSON-Zugangsdaten direkt aus den Streamlit Cloud Secrets
-    credentials = Credentials.from_service_account_info(
-        st.secrets["gconnections"], 
-        scopes=scopes
-    )
+    
+    # Erstelle eine Kopie der Secrets im Speicher
+    creds_dict = dict(st.secrets["gconnections"])
+    
+    # WICHTIG: Repariert verloren gegangene Zeilenumbrüche im Schlüssel automatisch
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
 
 def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
     try:
         client = get_gspread_client()
-        # Öffnet das Sheet anhand der URL aus deinen Secrets
+        # Korrigierter Pfad zur Spreadsheet-URL
         sheet = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
         worksheet = sheet.worksheet("Zeiterfassung")
         
-        # Holt alle Daten und konvertiert sie in ein Pandas Dataframe
         records = worksheet.get_all_records()
         df = pd.DataFrame(records)
         
         if df.empty:
             return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
         return df
-    except Exception as e:
-        # Falls das Sheet komplett neu/leer ist, leeres Tabellengerüst liefern
+    except Exception:
         return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
 
 def save_data(df):
@@ -57,25 +59,16 @@ def save_data(df):
     sheet = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
     worksheet = sheet.worksheet("Zeiterfassung")
     
-    # Löscht das alte Sheet und schreibt die neuen Daten inklusive Header rein
     worksheet.clear()
+    # Header und Daten sauber als Liste in das Sheet schreiben
     worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
 
-
-# --- ERWEITERTER LOGIN-SCHUTZ MIT MITARBEITER-AUSWAHL ---
+# --- ERWEITERTER LOGIN-SCHUTZ ---
 def check_password_and_user():
     if "password_correct" not in st.session_state:
         st.title("🔒 Login & Anmeldung")
-        
-        # 1. Mitarbeiter Name/Kürzel eingeben
         st.text_input("Dein Name oder Kürzel (z.B. M. Mustermann):", key="user_name")
-        
-        # 2. Passwort abfragen
-        st.text_input(
-            "Bitte gib das App-Passwort ein:", 
-            type="password", 
-            key="password_entry"
-        )
+        st.text_input("Bitte gib das App-Passwort ein:", type="password", key="password_entry")
         
         if st.button("Einloggen", use_container_width=True):
             if not st.session_state["user_name"].strip():
@@ -95,7 +88,7 @@ if check_password_and_user():
     st.title("Meine Zeiterfassung ⏱️")
     st.caption(f"Eingeloggt als: **{current_user}**")
     
-    # Baugruppen-Liste (wiederverwendbar)
+    # Baugruppen-Liste
     baugruppen = [
         "Maschine Gesamt", "Bett & Anbauteile", "Hydraulik", "Hauptantrieb links", 
         "Spannmittel links & rechts", "Spindelkasten links", "C-Achse links", 
@@ -127,14 +120,12 @@ if check_password_and_user():
         "Pause": ["Mittag", "Kaffee", "Kurzpause"]
     }
     
-    # UI Layout für Auswahl
     col1, col2 = st.columns(2)
     with col1:
         projekt_wahl = st.selectbox("Projekt wählen", list(projekte.keys()))
     with col2:
         unterprojekt_wahl = st.selectbox("Baugruppe wählen", projekte[projekt_wahl])
     
-    # Daten initial laden
     df_global = load_data()
     
     # Button: Projekt starten / Wechseln
@@ -150,16 +141,14 @@ if check_password_and_user():
             "Dauer_Min": 0.0
         }
         
-        # Letzten Eintrag SPEZIFISCH FÜR DIESEN MITARBEITER finden und Dauer updaten
         df_user = df_global[df_global["Mitarbeiter"] == current_user]
         if len(df_user) > 0:
             letzter_user_index = df_user.index[-1]
             if df_global.at[letzter_user_index, "Projekt"] != "🏁 FEIERABEND":
-                letzter_start = datetime.strptime(df_global.at[letzter_user_index, "Start"], "%Y-%m-%d %H:%M:%S")
+                letzter_start = datetime.strptime(str(df_global.at[letzter_user_index, "Start"]), "%Y-%m-%d %H:%M:%S")
                 dauer = (jetzt - letzter_start).total_seconds() / 60
                 df_global.at[letzter_user_index, "Dauer_Min"] = round(dauer, 2)
         
-        # Neuen Eintrag anhängen und hochladen
         df_neu = pd.concat([df_global, pd.DataFrame([neuer_eintrag])], ignore_index=True)
         save_data(df_neu)
         st.success(f"Aktiviert: {projekt_wahl} - {unterprojekt_wahl}")
@@ -171,7 +160,7 @@ if check_password_and_user():
             jetzt = get_local_now()
             letzter_user_index = df_user.index[-1]
             
-            letzter_start = datetime.strptime(df_global.at[letzter_user_index, "Start"], "%Y-%m-%d %H:%M:%S")
+            letzter_start = datetime.strptime(str(df_global.at[letzter_user_index, "Start"]), "%Y-%m-%d %H:%M:%S")
             dauer = (jetzt - letzter_start).total_seconds() / 60
             df_global.at[letzter_user_index, "Dauer_Min"] = round(dauer, 2)
             
@@ -188,7 +177,7 @@ if check_password_and_user():
         else:
             st.info("Dein Tag ist bereits beendet oder kein Eintrag vorhanden.")
 
-    # --- STORNO FUNKTION (NUR FÜR DEN EIGENEN LETZTEN EINTRAG) ---
+    # --- STORNO FUNKTION ---
     df_user_storno = df_global[df_global["Mitarbeiter"] == current_user]
     if len(df_user_storno) > 0:
         with st.expander("⚠️ Meinen letzten Eintrag stornieren"):
@@ -207,8 +196,6 @@ if check_password_and_user():
     # --- DATEN FILTERN FÜR DIE INDIVIDUELLE AUSWERTUNG ---
     if not df_global.empty:
         df_global['Start_dt'] = pd.to_datetime(df_global['Start'])
-        
-        # Filtere primär nach den Einträgen des angemeldeten Benutzers
         df_personal = df_global[df_global['Mitarbeiter'] == current_user].copy()
         
         # --- MONATSFILTER GENERIEREN ---
@@ -244,6 +231,7 @@ if check_password_and_user():
         gewaehlter_monat_str = verfuegbare_monate[gewaehlter_index]
         
         gefilterte_daten = df_personal[df_personal['Monat_Jahr'] == gewaehlter_monat_str].copy()
+
 
         # --- STATISTIK & GRAPH ---
         if not gefilterte_daten.empty:
