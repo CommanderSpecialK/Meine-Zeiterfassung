@@ -119,7 +119,25 @@ if check_password_and_user():
     if not df_global.empty:
         df_global['Start_dt'] = pd.to_datetime(df_global['Start'], errors='coerce')
         df_personal = df_global[df_global['Mitarbeiter'] == current_user].copy()
+
+
+        st.divider()
+        heute_str = get_local_now().strftime("%Y-%m-%d")
+        heutige_daten = df_personal[df_personal['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
         
+        if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
+            st.success("🎉 Dein heutiger Arbeitstag ist offiziell beendet!")
+        else:
+            st.info("⏱️ Dein Arbeitstag läuft aktuell noch.")
+
+        st.subheader("Dein Log von heute")
+        if not heutige_daten.empty:
+            heutige_daten['Start_Anzeige'] = heutige_daten['Start_dt'].dt.strftime('%Y-%m-%d %H:%M:%S')
+            st.table(heutige_daten[::-1].head(10)[["Start_Anzeige", "Projekt", "Unterprojekt", "Dauer_Min"]].rename(columns={"Start_Anzeige": "Start"}))
+        else:
+            st.info("Heute noch keine Einträge vorhanden.")
+        
+        st.divider()
         st.subheader("📅 Meine Monats-Statistik")
         df_personal['Monat_Jahr'] = df_personal['Start_dt'].dt.strftime('%Y-%m')
         aktuelle_monat_str = get_local_now().strftime('%Y-%m')
@@ -155,18 +173,4 @@ if check_password_and_user():
                 st.bar_chart(data=summary, x="Projekt & Baugruppe", y="Stunden (h)", use_container_width=True)
                 st.dataframe(summary[["Projekt", "Baugruppe", "Stunden (h)"]], use_container_width=True, hide_index=True)
 
-        st.divider()
-        heute_str = get_local_now().strftime("%Y-%m-%d")
-        heutige_daten = df_personal[df_personal['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
-        
-        if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
-            st.success("🎉 Dein heutiger Arbeitstag ist offiziell beendet!")
-        else:
-            st.info("⏱️ Dein Arbeitstag läuft aktuell noch.")
 
-        st.subheader("Dein Log von heute")
-        if not heutige_daten.empty:
-            heutige_daten['Start_Anzeige'] = heutige_daten['Start_dt'].dt.strftime('%Y-%m-%d %H:%M:%S')
-            st.table(heutige_daten[::-1].head(10)[["Start_Anzeige", "Projekt", "Unterprojekt", "Dauer_Min"]].rename(columns={"Start_Anzeige": "Start"}))
-        else:
-            st.info("Heute noch keine Einträge vorhanden.")
