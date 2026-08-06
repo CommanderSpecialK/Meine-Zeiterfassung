@@ -12,7 +12,15 @@ if check_password_and_user():
     
     current_user = st.session_state["current_user"]
     st.title("Meine Zeiterfassung ⏱️")
-    st.caption(f"Eingeloggt als: **{current_user}**")
+    
+    col_user, col_logout = st.columns([4, 1])
+    with col_user:
+        st.caption(f"Eingeloggt als: **{current_user}**")
+    with col_logout:
+        if st.button("🚪 Ausloggen", use_container_width=True):
+            # Löscht alle Login-Daten aus dem aktuellen Sitzungsspeicher
+            st.session_state.clear()
+            st.rerun()
     
     # Baugruppen-Liste (wiederverwendbar)
     baugruppen = [
