@@ -1,10 +1,23 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
+import pytz
 import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Zeiterfassung", page_icon="⏱️", layout="centered")
+
+# --- ZEITZONEN-FUNKTION (MEZ / Lokale Zeit absichern) ---
+def get_local_now():
+    """Holt die aktuelle Zeit basierend auf der Zeitzone des Benutzer-Browsers."""
+    try:
+        user_tz_name = st.context.timezone  # Liest z.B. 'Europe/Berlin' oder 'Europe/Vienna' aus
+        local_tz = pytz.timezone(user_tz_name)
+    except Exception:
+        local_tz = pytz.timezone("Europe/Berlin")  # Fallback auf MEZ/MESZ
+    
+    # Konvertiert die aktuelle UTC-Zeit präzise in die lokale Zeitzone
+    return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
 # --- PASSWORT SCHUTZ FUNKTION ---
 def check_password():
@@ -65,7 +78,7 @@ if check_password():
     
     # Button: Start / Wechseln
     if st.button("🚀 Projekt starten / Wechseln", use_container_width=True):
-        jetzt = datetime.now()
+        jetzt = get_local_now()
         zeit_string = jetzt.strftime("%Y-%m-%d %H:%M:%S")
         
         neuer_eintrag = {
@@ -96,7 +109,7 @@ if check_password():
         if os.path.isfile(LOG_FILE):
             df_alt = pd.read_csv(LOG_FILE)
             if len(df_alt) > 0 and df_alt.iloc[-1]["Projekt"] != "🏁 FEIERABEND":
-                jetzt = datetime.now()
+                jetzt = get_local_now()
                 letzter_start = datetime.strptime(df_alt.iloc[-1]["Start"], "%Y-%m-%d %H:%M:%S")
                 
                 dauer = (jetzt - letzter_start).total_seconds() / 60
@@ -110,7 +123,6 @@ if check_password():
                 }
                 df_final = pd.concat([df_alt, pd.DataFrame([feierabend])], ignore_index=True)
                 df_final.to_csv(LOG_FILE, index=False)
-                st.session_state["feierabend_just_logged"] = True
                 st.rerun()
             else:
                 st.info("Tag ist bereits beendet oder kein Eintrag vorhanden.")
@@ -120,65 +132,88 @@ if check_password():
     # Daten einlesen und filtern für Auswertungen
     if os.path.isfile(LOG_FILE):
         df_display = pd.read_csv(LOG_FILE)
-        heute = datetime.now().strftime("%Y-%m-%d")
-        heutige_daten = df_display[df_display['Start'].str.contains(heute, na=False)].copy()
         
-        # --- ZUSAMMENFASSUNG NACH FEIERABEND ---
-        ist_feierabend = len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND"
+        # --- DATUMSFILTER ---
+        st.subheader("📅 Auswertungszeitraum filtern")
+        heute_datum = get_local_now().date()
         
-        if ist_feierabend:
-            st.header("📊 Tageszusammenfassung (Feierabend)")
-            
-            # Filtere Feierabend-Zeilen für die Berechnung heraus
-            df_projekte = heutige_daten[heutige_daten["Projekt"] != "🏁 FEIERABEND"].copy()
+        # Datumsbereich-Auswahl (Standardmäßig nur der heutige Tag vorausgewählt)
+        date_range = st.date_input("Zeitraum wählen", [heute_datum, heute_datum])
+        
+        # Filtern nach ausgewähltem Zeitraum (nur valide Bereiche verarbeiten)
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            # Konvertiere Spalte in Datetime für den Filter-Vergleich
+            df_display['Start_dt'] = pd.to_datetime(df_display['Start'])
+            gefilterte_daten = df_display[
+                (df_display['Start_dt'].dt.date >= start_date) & 
+                (df_display['Start_dt'].dt.date <= end_date)
+            ].copy()
+        else:
+            gefilterte_daten = df_display[df_display['Start'].str.contains(heute_datum.strftime("%Y-%m-%d"), na=False)].copy()
+
+        # --- RECHTLICHE STATISTIK & DIAGRAMM ---
+        if not gefilterte_daten.empty:
+            df_projekte = gefilterte_daten[gefilterte_daten["Project"] != "🏁 FEIERABEND" if "Project" in gefilterte_daten else gefilterte_daten["Projekt"] != "🏁 FEIERABEND"].copy()
             
             if not df_projekte.empty:
-                # Berechne Stunden statt Minuten für bessere Lesbarkeit
                 df_projekte["Dauer_Std"] = round(df_projekte["Dauer_Min"] / 60, 2)
                 
-                # Gruppierung nach Projekt und Baugruppe (Unterprojekt)
+                # Aggregieren für Statistik und Diagramm
                 summary = df_projekte.groupby(["Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
-                summary.columns = ["Projekt", "Baugruppe", "Geleistete Stunden (h)"]
+                summary.columns = ["Projekt", "Baugruppe", "Stunden (h)"]
                 
-                # Gesamtsumme berechnen
-                gesamte_stunden = round(df_projekte["Dauer_Min"].sum() / 60, 2)
+                # Gesamtstunden berechnen
+                gesamte_stunden = round(summary["Stunden (h)"].sum(), 2)
                 
-                # Kennzahlen anzeigen
-                st.metric(label="Gesamte Arbeitszeit heute", value=f"{gesamte_stunden} Std")
-                st.subheader("Aufteilung nach Baugruppen:")
-                st.dataframe(summary, use_container_width=True, hide_index=True)
+                # Layout für Kennzahl und Diagramm
+                st.metric(label="Geleistete Arbeitszeit im Zeitraum", value=f"{gesamte_stunden} Std")
+                
+                # Visualisierung: Balkendiagramm nach Baugruppen gerichtet
+                st.subheader("📊 Stundenverteilung nach Baugruppe")
+                # Kombiniere Projekt + Baugruppe für eine eindeutige Achsen-Beschriftung im Chart
+                summary["Projekt & Baugruppe"] = summary["Projekt"] + " - " + summary["Baugruppe"]
+                
+                st.bar_chart(
+                    data=summary,
+                    x="Projekt & Baugruppe",
+                    y="Stunden (h)",
+                    use_container_width=True
+                )
+                
+                st.subheader("📋 Zusammenfassung in Zahlen:")
+                st.dataframe(summary[["Projekt", "Baugruppe", "Stunden (h)"]], use_container_width=True, hide_index=True)
             else:
-                st.info("Keine Projektzeiten für heute aufgezeichnet.")
-            st.divider()
-
-        # --- LIVE STATISTIK (WÄHREND DES TAGES) ---
+                st.info("Keine Projektzeiten im gewählten Zeitraum aufgezeichnet.")
         else:
-            st.subheader("⏱️ Live-Statistik heute")
-            df_projekte_live = heutige_daten[heutige_daten["Projekt"] != "🏁 FEIERABEND"].copy()
-            if not df_projekte_live.empty:
-                gesamte_min_live = df_projekte_live["Dauer_Min"].sum()
-                # Berechne Zeit seit dem letzten Wechsel für das aktuelle Projekt
-                letzter_start = datetime.strptime(df_projekte_live.iloc[-1]["Start"], "%Y-%m-%d %H:%M:%S")
-                aktuell_vergangen_min = (datetime.now() - letzter_start).total_seconds() / 60
-                
-                gesamte_stunden_live = round((gesamte_min_live + aktuell_vergangen_min) / 60, 2)
-                st.metric(label="Bisherige Arbeitszeit heute (inkl. aktuelles Projekt)", value=f"{gesamte_stunden_live} Std")
-            else:
-                st.info("Noch kein Projekt für heute gestartet.")
-            st.divider()
+            st.info("Keine Einträge für diesen Zeitraum gefunden.")
+            
+        st.divider()
         
-        # --- TABELLEN ANZEIGE & DOWNLOAD ---
+        # --- LIVE STATUS ODER FEIERABEND ANZEIGE (NUR FÜR HEUTE) ---
+        heute_str = heute_datum.strftime("%Y-%m-%d")
+        heutige_daten = df_display[df_display['Start'].str.contains(heute_str, na=False)].copy()
+        
+        if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
+            st.success("🎉 Der heutige Arbeitstag ist offiziell beendet! Feierabend ist eingetragen.")
+        else:
+            st.info("⏱️ Der Arbeitstag läuft aktuell noch. Die Statistik oben zeigt den aktuellen Stand ohne das laufende Rest-Intervall.")
+
+        st.divider()
+        
+        # --- TABELLEN ANZEIGE (HEUTE) & DOWNLOAD ---
         st.subheader("Dein Log von heute")
         if not heutige_daten.empty:
             st.table(heutige_daten[::-1].head(10))
         else:
             st.info("Heute noch keine Einträge vorhanden.")
         
-        # Download Button für die CSV
-        csv = df_display.to_csv(index=False).encode('utf-8')
+        # Download Button für das gesamte File
+        csv = df_display.drop(columns=['Start_dt'], errors='ignore').to_csv(index=False).encode('utf-8')
         st.download_button(
             label="💾 Gesamtes Logfile (CSV) herunterladen",
             data=csv,
-            file_name=f"zeiterfassung_{heute}.csv",
+            file_name=f"zeiterfassung_export.csv",
             mime="text/csv"
         )
+
