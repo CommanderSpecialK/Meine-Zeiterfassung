@@ -5,6 +5,7 @@ import pytz
 import os
 import gspread
 from google.oauth2.service_account import Credentials
+import json  # Unbedingt erforderlich für das saubere Parsen
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Team Zeiterfassung", page_icon="⏱️", layout="centered")
@@ -18,34 +19,26 @@ def get_local_now():
         local_tz = pytz.timezone("Europe/Berlin")  
     return datetime.now(timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
-# --- GOOGLE SHEETS VERBINDUNG (SICHER & TOML-KONFORM) ---
+# --- GOOGLE SHEETS VERBINDUNG (SICHER & TOML-IMMUN) ---
 def get_gspread_client():
-    """Verbindet sich über die Streamlit Secrets, ohne den Key im Code zu zeigen."""
+    """Lädt das Google-JSON als rohen String aus den Secrets und parst es fehlerfrei."""
     scopes = [
         "https://googleapis.com",
         "https://googleapis.com"
     ]
     
-    # Lädt die Daten sicher aus den verschlüsselten Umgebungsvariablen
-    creds_dict = {
-      "type": st.secrets["gconnections"]["type"],
-      "project_id": st.secrets["gconnections"]["project_id"],
-      "private_key_id": st.secrets["gconnections"]["private_key_id"],
-      # Das .replace stellt sicher, dass die Zeilenumbrüche im Hintergrund perfekt ankommen
-      "private_key": st.secrets["gconnections"]["private_key"].replace("\\n", "\n"),
-      "client_email": st.secrets["gconnections"]["client_email"],
-      "client_id": st.secrets["gconnections"]["client_id"],
-      "auth_uri": st.secrets["gconnections"]["auth_uri"],
-      "token_uri": st.secrets["gconnections"]["token_uri"],
-      "auth_provider_x509_cert_url": st.secrets["gconnections"]["auth_provider_x509_cert_url"],
-      "client_x509_cert_url": st.secrets["gconnections"]["client_x509_cert_url"],
-      "universe_domain": st.secrets["gconnections"]["universe_domain"]
-    }
+    try:
+        # Holt den rohen, einzeiligen JSON-Text aus den verschlüsselten Secrets
+        raw_json_str = st.secrets["google_credentials_raw"]
         
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(credentials)
-
-
+        # json.loads stellt die exakte Struktur (inklusive aller \n) perfekt im Speicher wieder her
+        creds_dict = json.loads(raw_json_str)
+        
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(credentials)
+    except Exception as e:
+        st.error(f"Fehler bei der Google-Authentifizierung: {e}")
+        raise e
 
 def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
@@ -76,6 +69,7 @@ def save_data(df):
     alles_inkl_header = [header] + daten_zeilen
     
     worksheet.update(range_name="A1", values=alles_inkl_header)
+
 
 
 
