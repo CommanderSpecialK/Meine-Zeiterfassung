@@ -22,37 +22,14 @@ if check_password_and_user():
             st.session_state.clear()
             st.rerun()
     
-    # Baugruppen-Liste (wiederverwendbar)
-    baugruppen = [
-        "Maschine Gesamt", "Bett & Anbauteile", "Hydraulik", "Hauptantrieb links", 
-        "Spannmittel links & rechts", "Spindelkasten links", "C-Achse links", 
-        "Spika rechts inkl. Hauptantrieb rechts inkl. Längsantrieb", "C-Achse rechts", 
-        "Kreuzschlitten OL & OR", "Kreuzschlitten UR", "Reitstock inkl. Energiezuführung", 
-        "Lünettenschlitten inkl. Energiezuführung", "Scheibenrevolver inkl. Aufbau", 
-        "Lünette inkl. Aufbau", "Werkzeugmagazin inkl. Aufbau", "Dreh-Bohr-Fräseinheit inkl. Aufbau", 
-        "Werkstück- und Werkzeugkontrolle", "Führungsbahnabdeckung oben & unten", 
-        "Maschinenverkleidung inkl. Späneförderer", "Kühlmitteleinrichtung", 
-        "Dokumentation, Vertriebsunterlagen, Abnahmeprotokolle", "Vorrichtungen", 
-        "Portallader", "Steuerung & Antriebe allgemein", "Sonstiges"
-    ]
 
-    # Deine Projekte
-    projekte = {
-        "Allgemein": baugruppen,
-        "M20": baugruppen,
-        "M20 Automation": baugruppen,
-        "M35 M40 M50": baugruppen,
-        "M6x": baugruppen,
-        "M70": baugruppen,
-        "M80": baugruppen,
-        "M1xx": baugruppen,
-        "M200": baugruppen,
-        "Windchill": baugruppen,
-        "Sinumerik One": baugruppen,
-        "Palettensystem": baugruppen,
-        "Schulung": baugruppen,
-        "Pause": ["Mittag", "Kaffee", "Kurzpause"]
-    }
+    
+    # Baut das Dictionary für die App vollautomatisch zusammen
+    projekte = {}
+    for p in projekte_aus_secrets:
+        projekte = st.secrets.get("PROJEKT_STRUKTUR", {"Allgemein": ["Sonstiges"]})
+
+
     
     col1, col2 = st.columns(2)
     with col1:
