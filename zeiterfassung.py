@@ -94,15 +94,33 @@ if check_password_and_user():
                 st.success("Eintrag erfolgreich gelöscht!")
                 st.rerun()
     
+    # --- LIVE STATUS HEUTE (JETZT DIREKT HIER UNTERHALB VON STORNO) ---
     st.divider()
-    
-    # --- DYNAMISCHE MONATS-VORBEREITUNG & FILTRATION ---
     if not df_global.empty:
         df_global['Start_dt'] = pd.to_datetime(df_global['Start'], errors='coerce')
+        df_personal_base = df_global[df_global['Mitarbeiter'] == current_user].copy()
+        
+        heute_str = get_local_now().strftime("%Y-%m-%d")
+        heutige_daten = df_personal_base[df_personal_base['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
+        
+        if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
+            st.success("🎉 Dein heutiger Arbeitstag ist offiziell beendet!")
+        else:
+            st.info("⏱️ Dein Arbeitstag läuft aktuell noch.")
+
+        st.subheader("Dein Log von heute")
+        if not heutige_daten.empty:
+            heutige_daten['Start_Anzeige'] = heutige_daten['Start_dt'].dt.strftime('%Y-%m-%d %H:%M:%S')
+            st.table(heutige_daten[::-1].head(10)[["Start_Anzeige", "Projekt", "Unterprojekt", "Dauer_Min", "Kommentar"]].rename(columns={"Start_Anzeige": "Start"}))
+        else:
+            st.info("Heute noch keine Einträge vorhanden.")
+            
+    st.divider()
+    
+    # --- DYNAMISCHE MONATS-VORBEREITUNG & FILTRATION (FÜR AUSWERTUNG) ---
+    if not df_global.empty:
         df_global['Monat_Jahr'] = df_global['Start_dt'].dt.strftime('%Y-%m')
         aktuelle_monat_str = get_local_now().strftime('%Y-%m')
-        
-        df_personal_base = df_global[df_global['Mitarbeiter'] == current_user].copy()
         
         if st.session_state.get("is_admin", False):
             verfuegbare_monate = sorted(list(df_global['Monat_Jahr'].dropna().unique()))
@@ -125,22 +143,6 @@ if check_password_and_user():
             
         default_idx = verfuegbare_monate.index(aktuelle_monat_str) if aktuelle_monat_str in verfuegbare_monate else len(verfuegbare_monate)-1
 
-        # AUFRUF DER AUSGELAGERTEN AUSWERTUNGS-DATEI
+        # AUFRUF DER AUSGELAGERTEN AUSWERTUNGS-DATEI (GANZ UNTEN)
         render_auswertungen(df_global, current_user, auswahl_labels, verfuegbare_monate, default_idx, monats_namen)
 
-        # --- LIVE STATUS HEUTE ---
-        st.divider()
-        heute_str = get_local_now().strftime("%Y-%m-%d")
-        heutige_daten = df_personal_base[df_personal_base['Start_dt'].dt.strftime('%Y-%m-%d') == heute_str].copy()
-        
-        if len(heutige_daten) > 0 and heutige_daten.iloc[-1]["Projekt"] == "🏁 FEIERABEND":
-            st.success("🎉 Dein heutiger Arbeitstag ist offiziell beendet!")
-        else:
-            st.info("⏱️ Dein Arbeitstag läuft aktuell noch.")
-
-        st.subheader("Dein Log von heute")
-        if not heutige_daten.empty:
-            heutige_daten['Start_Anzeige'] = heutige_daten['Start_dt'].dt.strftime('%Y-%m-%d %H:%M:%S')
-            st.table(heutige_daten[::-1].head(10)[["Start_Anzeige", "Projekt", "Unterprojekt", "Dauer_Min", "Kommentar"]].rename(columns={"Start_Anzeige": "Start"}))
-        else:
-            st.info("Heute noch keine Einträge vorhanden.")
