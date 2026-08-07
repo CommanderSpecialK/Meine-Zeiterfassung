@@ -30,7 +30,7 @@ if check_password_and_user():
     with col2:
         unterprojekt_wahl = st.selectbox("Baugruppe wählen", projekte[projekt_wahl])
         
-    kommentar_eingabe = st.text_input("Notiz / Tätigkeit (optional):", placeholder="Was hast du gemacht?")
+    kommentar_eingabe = st.text_input("Notiz / Kommentar (optional):", placeholder="Hier Text eingeben")
     
     df_global = load_data()
     
