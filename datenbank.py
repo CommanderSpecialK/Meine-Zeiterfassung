@@ -20,11 +20,11 @@ def load_data():
     """Lädt die aktuellen Daten aus dem Google Sheet."""
     try:
         df = conn.read(worksheet="Zeiterfassung", ttl="0s")
-        if df.empty or df.columns.size < 5:
-            return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
+        if df.empty or df.columns.size < 6:
+            return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min", "Kommentar"])
         return df
     except Exception:
-        return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min"])
+        return pd.DataFrame(columns=["Mitarbeiter", "Start", "Projekt", "Unterprojekt", "Dauer_Min", "Kommentar"])
 
 def save_data(df):
     """Überschreibt das Google Sheet sicher mit den neuen Daten."""
