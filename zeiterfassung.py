@@ -94,10 +94,13 @@ if check_password_and_user():
                 st.success("Eintrag erfolgreich gelöscht!")
                 st.rerun()
     
-    # --- LIVE STATUS HEUTE (JETZT DIREKT HIER UNTERHALB VON STORNO) ---
+    # --- LIVE STATUS HEUTE ---
     st.divider()
     if not df_global.empty:
         df_global['Start_dt'] = pd.to_datetime(df_global['Start'], errors='coerce')
+        # KORREKTUR: Spalte wird sofort hier für alle folgenden Berechnungen erzeugt!
+        df_global['Monat_Jahr'] = df_global['Start_dt'].dt.strftime('%Y-%m')
+        
         df_personal_base = df_global[df_global['Mitarbeiter'] == current_user].copy()
         
         heute_str = get_local_now().strftime("%Y-%m-%d")
@@ -119,7 +122,6 @@ if check_password_and_user():
     
     # --- DYNAMISCHE MONATS-VORBEREITUNG & FILTRATION (FÜR AUSWERTUNG) ---
     if not df_global.empty:
-        df_global['Monat_Jahr'] = df_global['Start_dt'].dt.strftime('%Y-%m')
         aktuelle_monat_str = get_local_now().strftime('%Y-%m')
         
         if st.session_state.get("is_admin", False):
@@ -143,6 +145,5 @@ if check_password_and_user():
             
         default_idx = verfuegbare_monate.index(aktuelle_monat_str) if aktuelle_monat_str in verfuegbare_monate else len(verfuegbare_monate)-1
 
-        # AUFRUF DER AUSGELAGERTEN AUSWERTUNGS-DATEI (GANZ UNTEN)
+        # AUFRUF DER AUSGELAGERTEN AUSWERTUNGS-DATEI
         render_auswertungen(df_global, current_user, auswahl_labels, verfuegbare_monate, default_idx, monats_namen)
-
