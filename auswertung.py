@@ -30,7 +30,8 @@ def render_auswertungen(df_global, current_user, auswahl_labels, verfuegbare_mon
                 st.metric(label=f"Deine Netto-Arbeitszeit im {monat_wahl_user} (ohne Pause)", 
                           value=f"{round(summary[summary['Projekt'] != 'Pause']['Stunden (h)'].sum(), 2)} Std")
                 
-                summary["Projekt & Baugruppe"] = summary["Projekt"] + " - " + summary["Unterprojekt"]
+                # KORREKTUR: Greift nun korrekt auf 'Baugruppe' statt 'Unterprojekt' zu
+                summary["Projekt & Baugruppe"] = summary["Projekt"] + " - " + summary["Baugruppe"]
                 st.bar_chart(data=summary, x="Projekt & Baugruppe", y="Stunden (h)", use_container_width=True)
                 st.dataframe(summary[["Projekt", "Baugruppe", "Stunden (h)"]], use_container_width=True, hide_index=True)
             else:
