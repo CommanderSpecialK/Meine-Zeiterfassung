@@ -5,39 +5,11 @@ def check_password_and_user():
     if "password_correct" not in st.session_state:
         st.title("🔒 Login & Anmeldung")
         
-        # --- MITARBEITER LISTE ---
-        mitarbeiter_liste = [
-            "-- Bitte Namen wählen --",
-            "Kogler (Admin)",  # <--- Trage hier deinen exakten Namen ein!
-            "Aigner G.",
-            "Diesenreiter S.",
-            "Dumfart H.P.",
-            "Dutzler R.",
-            "Emrich T.",
-            "Freudenthaler M.",
-            "Ganglberger H.",
-            "Gruber F.",
-            "Haghofer A.",
-            "Halmdienst M.",
-            "Hinterdorfer P.",
-            "Höller P.",
-            "Horner T.",
-            "Kaltenberger A.",
-            "Maringer H.",
-            "Mühlberger A.",
-            "Neumayer L.",
-            "Oberaigner J.",
-            "Öller M.",
-            "Paul E.",
-            "Peischl D.",
-            "Pühringer W.",
-            "Santner P.",
-            "Smailagic A.",
-            "Steinmayr G.",
-            "Stöttner D.",
-            "Strasser D.",
-            "Wagner M."
-        ]
+        kollegen_aus_secrets = st.secrets.get("MITARBEITER_LISTE", ["Keine Mitarbeiter hinterlegt"])
+
+        admin_name = kollegen_aus_secrets[0]
+
+        mitarbeiter_liste = ["-- Bitte Namen auswählen --", admin_name] + list(kollegen_aus_secrets)
         
         # Ein Streamlit-Formular bündelt die Eingaben und reagiert auf die Enter-Taste
         with st.form("login_form", clear_on_submit=False):
@@ -52,7 +24,7 @@ def check_password_and_user():
             if user_wahl == "-- Bitte Namen wählen --":
                 st.error("Bitte wähle zuerst deinen Namen aus der Liste aus!")
             else:
-                is_admin_user = (user_wahl == "Kogler (Admin)")
+                is_admin_user = (user_wahl == kollegen_aus_secrets[0])
                 
                 if is_admin_user:
                     if st.session_state["password_entry"] == st.secrets["ADMIN_PASSWORD"]:
