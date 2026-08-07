@@ -25,9 +25,8 @@ if check_password_and_user():
 
     
     # Baut das Dictionary für die App vollautomatisch zusammen
-    projekte = {}
-    for p in projekte_aus_secrets:
-        projekte = st.secrets.get("PROJEKT_STRUKTUR", {"Allgemein": ["Sonstiges"]})
+
+    projekte = st.secrets.get("PROJEKT_STRUKTUR", {"Allgemein": ["Sonstiges"]})
 
 
     
