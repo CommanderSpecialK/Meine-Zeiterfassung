@@ -233,7 +233,6 @@ if check_password_and_user():
                         mitarbeiter_opt = ["Alle"] + sorted(list(df_admin_base["Mitarbeiter"].unique()))
                         wahl_mitarbeiter = st.selectbox("Mitarbeiter", mitarbeiter_opt)
                     
-                    # Temporär filtern für kaskadierende Projektauswahl
                     df_temp = df_admin_base.copy()
                     if wahl_mitarbeiter != "Alle":
                         df_temp = df_temp[df_temp["Mitarbeiter"] == wahl_mitarbeiter]
@@ -264,27 +263,37 @@ if check_password_and_user():
                         ges_stunden_filtered = round(df_filtered["Dauer_Std"].sum(), 2)
                         st.metric(label="Summe geleistete Stunden (gefiltert)", value=f"{ges_stunden_filtered} Std")
                         
-                        # Grafik-Logik je nach Filter-Tiefe anpassen
                         st.markdown("### 📊 Visuelle Stundenverteilung")
                         if wahl_mitarbeiter == "Alle":
-                            # Wenn alle Mitarbeiter gezeigt werden, gruppieren wir nach Name
                             chart_data = df_filtered.groupby("Mitarbeiter")["Dauer_Std"].sum().reset_index()
                             st.bar_chart(data=chart_data, x="Mitarbeiter", y="Dauer_Std", use_container_width=True)
                         else:
-                            # Wenn ein Mitarbeiter gewählt ist, gruppieren wir nach seinen Projekten
                             df_filtered["Zusammenfassung"] = df_filtered["Projekt"] + " - " + df_filtered["Unterprojekt"]
                             chart_data = df_filtered.groupby("Zusammenfassung")["Dauer_Std"].sum().reset_index()
                             st.bar_chart(data=chart_data, x="Zusammenfassung", y="Dauer_Std", use_container_width=True)
                         
-                        # Datentabelle für den Admin
                         st.markdown("### 📋 Gefilterte Einzelbuchungen")
                         table_data = df_filtered.groupby(["Mitarbeiter", "Projekt", "Unterprojekt"])["Dauer_Std"].sum().reset_index()
                         table_data.columns = ["Mitarbeiter", "Baugruppe (Projekt)", "Unterbaugruppe", "Stunden (h)"]
                         st.dataframe(table_data, use_container_width=True, hide_index=True)
+                        
+                        # --- NEU: EXPORT BUTTON FÜR DEN ADMIN ---
+                        st.markdown("### 💾 Daten exportieren")
+                        # Konvertiert die gefilterte Ansicht in ein Excel-freundliches CSV (mit UTF-8-BOM für Umlaute)
+                        csv_data = table_data.to_csv(index=False, sep=";").encode("utf-8-sig")
+                        
+                        st.download_button(
+                            label="📥 Gefilterte Auswertung als CSV (Excel) herunterladen",
+                            data=csv_data,
+                            file_name=f"zeiterfassung_export_{gewaehlter_monat_admin}.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
                     else:
                         st.info("Keine Daten für diese spezifische Filterkombination gefunden.")
                 else:
                     st.info(f"Keine Daten für den Monat {monat_wahl_admin} vorhanden.")
+
 
 
 
