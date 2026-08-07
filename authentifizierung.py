@@ -9,7 +9,7 @@ def check_password_and_user():
 
         admin_name = kollegen_aus_secrets[0]
 
-        mitarbeiter_liste = ["-- Bitte Namen auswählen --", admin_name] + list(kollegen_aus_secrets)
+        mitarbeiter_liste = ["-- Bitte Namen auswählen --"] + list(kollegen_aus_secrets)
         
         # Ein Streamlit-Formular bündelt die Eingaben und reagiert auf die Enter-Taste
         with st.form("login_form", clear_on_submit=False):
@@ -24,7 +24,7 @@ def check_password_and_user():
             if user_wahl == "-- Bitte Namen wählen --":
                 st.error("Bitte wähle zuerst deinen Namen aus der Liste aus!")
             else:
-                is_admin_user = (user_wahl == kollegen_aus_secrets[0])
+                is_admin_user = (user_wahl == admin_name)
                 
                 if is_admin_user:
                     if st.session_state["password_entry"] == st.secrets["ADMIN_PASSWORD"]:
