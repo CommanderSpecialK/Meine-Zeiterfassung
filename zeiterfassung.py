@@ -5,7 +5,7 @@ from authentifizierung import check_password_and_user
 from auswertung import render_auswertungen  # <-- UNSER NEUER IMPORT
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Team Zeiterfassung", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Zeiterfassung", page_icon="⏱️", layout="centered")
 
 if check_password_and_user():
     
